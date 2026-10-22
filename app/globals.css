@@ -1,0 +1,134 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-page: #FAF9FF;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --bg-code: #19143D;
+  --text-primary: #19143D;
+  --text-secondary: #68677D;
+  --border-color: #E8E5F4;
+  --primary: #6C4DFF;
+  --primary-hover: #5838E6;
+  --primary-subtle: #EAE5FF;
+  --accent: #2FD6A0;
+  --card-shadow: 0 16px 36px -16px rgba(108, 77, 255, 0.12);
+}
+
+.dark {
+  --bg-page: #070A12;
+  --bg-surface: #0D111B;
+  --bg-elevated: #111725;
+  --bg-input: #0A0F19;
+  --bg-code: #0A0F19;
+  --text-primary: #F3F5FA;
+  --text-secondary: #9AA4B5;
+  --border-color: #242B39;
+  --primary: #29D3C2;
+  --primary-hover: #22B5A6;
+  --primary-subtle: rgba(41, 211, 194, 0.12);
+  --accent: #8B7CFF;
+  --card-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.5);
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+  font-family: var(--font-display), system-ui, -apple-system, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  overflow-x: hidden;
+}
+
+.dark body {
+  background-image: radial-gradient(circle at 50% 0%, rgba(41, 211, 194, 0.05), transparent 45%),
+                    radial-gradient(circle at 100% 100%, rgba(139, 124, 255, 0.04), transparent 45%);
+  background-attachment: fixed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@layer components {
+  .app-card {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--card-shadow);
+    border-radius: 20px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  }
+
+  .app-card-elevated {
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--card-shadow);
+    border-radius: 24px;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center font-bold px-5 py-2.5 rounded-full transition-all duration-200 active:scale-95;
+    background-color: var(--text-primary);
+    color: var(--bg-page);
+  }
+
+  .dark .btn-primary {
+    background-color: #29D3C2;
+    color: #070A12;
+  }
+
+  .btn-accent {
+    @apply inline-flex items-center justify-center font-bold px-5 py-2.5 rounded-full transition-all duration-200 active:scale-95;
+    background-color: #6C4DFF;
+    color: #FFFFFF;
+  }
+
+  .dark .btn-accent {
+    background-color: #29D3C2;
+    color: #070A12;
+  }
+
+  .btn-outline {
+    @apply inline-flex items-center justify-center font-bold px-5 py-2.5 rounded-full border transition-all duration-200 active:scale-95;
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    background-color: var(--bg-surface);
+  }
+
+  .btn-outline:hover {
+    border-color: var(--primary);
+  }
+
+  .code-font {
+    font-family: var(--font-mono), "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+}
+
+/* Custom code scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
