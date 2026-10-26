@@ -121,6 +121,7 @@ export interface GoogleIdConfiguration {
   ux_mode?: "popup" | "redirect";
   login_uri?: string;
   native_callback?: (response: unknown) => void;
+  itp_support?: boolean;
 }
 
 // Global Google Identity Services Types
