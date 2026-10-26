@@ -1,1 +1,49 @@
-{"name":"codeatlas-frontend","private":true,"scripts":{"dev":"next dev","build":"next build","start":"next start"},"dependencies":{"lucide-react":"^1.61.0","next":"14.2.15","react":"18.3.1","react-dom":"18.3.1"},"devDependencies":{"@types/node":"20.14.10","@types/react":"18.3.3","@types/react-dom":"18.3.0","autoprefixer":"10.4.19","postcss":"8.4.39","tailwindcss":"3.4.6","typescript":"5.5.3"}}
+{
+  "name": "codeatlas-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "build:pages": "tsx scripts/build-static-pages.ts",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "tsx scripts/test-unit.ts",
+    "test:integration": "tsx scripts/test-phase10.ts",
+    "test:e2e": "tsx scripts/test-e2e-journeys.ts",
+    "test:phase12": "tsx scripts/test-phase12.ts",
+    "test:phase13": "tsx scripts/test-phase13.ts",
+    "test:phase14": "tsx scripts/test-phase14.ts",
+    "test:phase15": "tsx scripts/test-phase15.ts",
+    "test:phase16": "tsx scripts/test-phase16.ts",
+    "build:vscode": "tsc -p integrations/vscode/tsconfig.json",
+    "test:phase17": "tsx scripts/test-phase17.ts",
+    "test:phase18": "tsx scripts/test-phase18.ts",
+    "test:phase19": "tsx scripts/test-phase19.ts",
+    "test:phase21": "tsx scripts/test-phase21.ts",
+    "test:google-auth": "tsx scripts/test-google-auth.ts",
+    "test:auth-system": "tsx scripts/test-auth-system.ts",
+    "test": "npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase21",
+    "test:all": "npm run lint && npm run typecheck && npm run build:vscode && npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase21 && npm run build"
+  },
+  "dependencies": {
+    "framer-motion": "^14.6.0",
+    "lucide-react": "^1.61.0",
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/react": "18.3.3",
+    "@types/react-dom": "18.3.0",
+    "@types/vscode": "^1.140.0",
+    "autoprefixer": "10.4.19",
+    "eslint": "^8.57.0",
+    "eslint-config-next": "^14.2.15",
+    "postcss": "8.4.39",
+    "tailwindcss": "3.4.6",
+    "tsx": "^4.23.15",
+    "typescript": "5.5.3"
+  }
+}

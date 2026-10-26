@@ -2,6 +2,14 @@ import PageHeader from "@/components/PageHeader";
 import Link from "next/link";
 import { ArrowLeft, Compass } from "lucide-react";
 
+export function generateStaticParams() {
+  return [
+    { slug: "overview" },
+    { slug: "explore" },
+    { slug: "workspace" },
+  ];
+}
+
 export default function GenericSlugPage({ params }: { params: { slug: string } }) {
   const title = params.slug
     .split("-")

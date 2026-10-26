@@ -1,0 +1,224 @@
+{
+  "name": "codeatlas-vscode",
+  "displayName": "CodeAtlas — AI Codebase Intelligence",
+  "description": "Understand unfamiliar code, trace dependencies, analyze change impact, review code, and ask questions directly inside VS Code.",
+  "version": "1.0.0",
+  "publisher": "codeatlas",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codeatlas/codeatlas-intelligence"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning",
+    "Linters",
+    "Snippets",
+    "Other"
+  ],
+  "keywords": [
+    "codeatlas",
+    "ai",
+    "codebase",
+    "architecture",
+    "code review",
+    "impact analysis",
+    "rag",
+    "refactoring"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeatlas.connect",
+        "title": "CodeAtlas: Connect to Server",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.disconnect",
+        "title": "CodeAtlas: Disconnect",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.selectRepository",
+        "title": "CodeAtlas: Select Active Repository",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.explainSelectedCode",
+        "title": "CodeAtlas: Explain Selected Code",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.askAboutCodebase",
+        "title": "CodeAtlas: Ask About This Codebase",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.findRelatedImplementations",
+        "title": "CodeAtlas: Find Related Implementations",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.explainDependencies",
+        "title": "CodeAtlas: Explain Dependencies",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.analyzeChangeImpact",
+        "title": "CodeAtlas: Analyze Change Impact",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.reviewSelectedCode",
+        "title": "CodeAtlas: Review Selected Code",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.analyzeStackTrace",
+        "title": "CodeAtlas: Analyze Stack Trace",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.openDashboard",
+        "title": "CodeAtlas: Open CodeAtlas Dashboard",
+        "category": "CodeAtlas"
+      },
+      {
+        "command": "codeatlas.refreshRepositoryContext",
+        "title": "CodeAtlas: Refresh Repository Context",
+        "category": "CodeAtlas"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "codeatlas.explainSelectedCode",
+          "when": "editorHasSelection",
+          "group": "codeatlas@1"
+        },
+        {
+          "command": "codeatlas.reviewSelectedCode",
+          "when": "editorHasSelection",
+          "group": "codeatlas@2"
+        },
+        {
+          "command": "codeatlas.findRelatedImplementations",
+          "when": "editorHasSelection",
+          "group": "codeatlas@3"
+        },
+        {
+          "command": "codeatlas.analyzeChangeImpact",
+          "group": "codeatlas@4"
+        },
+        {
+          "command": "codeatlas.analyzeStackTrace",
+          "when": "editorHasSelection",
+          "group": "codeatlas@5"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "codeatlas.connect"
+        },
+        {
+          "command": "codeatlas.disconnect"
+        },
+        {
+          "command": "codeatlas.selectRepository"
+        },
+        {
+          "command": "codeatlas.explainSelectedCode"
+        },
+        {
+          "command": "codeatlas.askAboutCodebase"
+        },
+        {
+          "command": "codeatlas.findRelatedImplementations"
+        },
+        {
+          "command": "codeatlas.explainDependencies"
+        },
+        {
+          "command": "codeatlas.analyzeChangeImpact"
+        },
+        {
+          "command": "codeatlas.reviewSelectedCode"
+        },
+        {
+          "command": "codeatlas.analyzeStackTrace"
+        },
+        {
+          "command": "codeatlas.openDashboard"
+        },
+        {
+          "command": "codeatlas.refreshRepositoryContext"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codeatlas-explorer",
+          "title": "CodeAtlas",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codeatlas-explorer": [
+        {
+          "type": "webview",
+          "id": "codeatlas.sidebarView",
+          "name": "CodeAtlas Intelligence"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CodeAtlas",
+      "properties": {
+        "codeatlas.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:3000",
+          "description": "URL of the CodeAtlas server instance."
+        },
+        "codeatlas.selectedRepositoryId": {
+          "type": "string",
+          "default": "",
+          "description": "Identifier of the active repository in CodeAtlas."
+        },
+        "codeatlas.autoDetectRepository": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically match active workspace folder with CodeAtlas repositories."
+        },
+        "codeatlas.enableDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Publish in-editor code review findings as VS Code diagnostics."
+        },
+        "codeatlas.requestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "description": "Timeout in milliseconds for CodeAtlas server requests."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./tsconfig.json",
+    "watch": "tsc -watch -p ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.10",
+    "@types/vscode": "^1.85.0",
+    "typescript": "5.5.3"
+  }
+}

@@ -1,0 +1,101 @@
+name: Deploy CodeAtlas to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "Custom Backend API URL for Member 2 Services (e.g. https://api.codeatlas.example.com/api)"
+        required: false
+        default: ""
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Static Frontend Artifacts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout CodeAtlas Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Code Quality & Lint Check
+        run: npm run lint
+
+      - name: TypeScript Static Typecheck
+        run: npm run typecheck
+
+      - name: Run Core Test Suites
+        run: |
+          npm run test:unit
+          npm run test:integration
+          npm run test:google-auth
+          npm run test:auth-system
+          npm run test:phase21
+
+      - name: Build Static Export for GitHub Pages
+        run: npm run build:pages
+        env:
+          NEXT_PUBLIC_APP_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          NEXT_PUBLIC_API_URL: ${{ inputs.api_url || vars.NEXT_PUBLIC_API_URL || '/api' }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ inputs.api_url || vars.NEXT_PUBLIC_API_BASE_URL || '/api' }}
+          GITHUB_PAGES: "true"
+          STATIC_EXPORT: "true"
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Verify Static Export Output Directory
+        run: |
+          if [ ! -d "out" ]; then
+            echo "::error::Static export directory 'out' does not exist!"
+            exit 1
+          fi
+          if [ ! -f "out/index.html" ]; then
+            echo "::error::Index HTML file 'out/index.html' is missing!"
+            exit 1
+          fi
+          if [ ! -f "out/.nojekyll" ]; then
+            echo "::error::GitHub Pages asset directive 'out/.nojekyll' is missing!"
+            exit 1
+          fi
+          echo "Static export verified with $(ls -1 out | wc -l) top-level entries."
+
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./out
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

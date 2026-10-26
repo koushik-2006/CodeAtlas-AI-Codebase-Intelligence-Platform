@@ -39,14 +39,14 @@ export const BUILDINGS: Building[] = [
   { id: "tests", label: "tests", cx: 175, cy: 215, a: 20, h: 30, tone: "mint", type: "Test Suite" },
 ];
 
-// Dark Graph Nodes matching Reference 2 (PDF 2 Page 1 & 6)
+// Dark Graph Nodes matching Reference 2 & Prompt requirements
 export const GRAPH_NODES = [
-  { id: "login", label: "LoginForm.tsx", type: "Component", x: 80, y: 150, color: "#29D3C2", desc: "User entry point" },
-  { id: "api", label: "POST /auth", type: "API Route", x: 190, y: 100, color: "#8B7CFF", desc: "Endpoint router" },
-  { id: "auth", label: "authorize()", type: "Core Function", x: 300, y: 150, color: "#29D3C2", desc: "Token authentication" },
-  { id: "service", label: "UserService", type: "Service", x: 410, y: 100, color: "#F3C969", desc: "User database lookup" },
-  { id: "db", label: "users table", type: "Database", x: 500, y: 180, color: "#2FD6A0", desc: "PostgreSQL storage" },
-  { id: "tests", label: "test_auth.py", type: "Test", x: 280, y: 240, color: "#FF5A5F", desc: "Unit & Integration test" },
+  { id: "login", label: "LoginForm.tsx", type: "Component", x: 75, y: 150, color: "#29D3C2", desc: "User entry point" },
+  { id: "api", label: "POST /auth", type: "API Route", x: 190, y: 95, color: "#8B7CFF", desc: "Endpoint router" },
+  { id: "auth", label: "authorize()", type: "Core Function", x: 305, y: 150, color: "#29D3C2", desc: "Token authentication" },
+  { id: "service", label: "UserService", type: "Service", x: 420, y: 95, color: "#F3C969", desc: "User database lookup" },
+  { id: "db", label: "users table", type: "Database", x: 505, y: 175, color: "#2FD6A0", desc: "PostgreSQL storage" },
+  { id: "tests", label: "test_auth.py", type: "Test", x: 305, y: 240, color: "#FF5A5F", desc: "Unit & Integration test" },
 ];
 
 function IsometricBox({
@@ -69,7 +69,7 @@ function IsometricBox({
     <g
       onClick={() => onPick?.(b.id)}
       className="cursor-pointer transition-transform duration-200 hover:opacity-100"
-      opacity={on ? 1 : 0.9}
+      opacity={on ? 1 : 0.92}
     >
       {/* Left polygon */}
       <polygon fill={l} points={p([[cx - a, cy - h], [cx, cy - h + a / 2], [cx, cy + a / 2], [cx - a, cy]])} />
@@ -78,30 +78,30 @@ function IsometricBox({
       {/* Top polygon */}
       <polygon
         fill={t}
-        stroke={on ? (isDark ? "#29D3C2" : "#1B1245") : (isDark ? "#242B39" : "none")}
-        strokeWidth={on ? "3" : "1"}
+        stroke={on ? (isDark ? "#29D3C2" : "#1E2022") : (isDark ? "#30363D" : "none")}
+        strokeWidth={on ? "2.5" : "1"}
         points={p([[cx, cy - h - a / 2], [cx + a, cy - h], [cx, cy - h + a / 2], [cx - a, cy - h]])}
       />
       {/* Floating Label */}
       <g transform={`translate(${cx},${cy - h - a / 2 - 14})`}>
         <rect
-          x={-(b.label.length * 3.6 + 12)}
+          x={-(b.label.length * 3.8 + 12)}
           y="-10"
-          width={b.label.length * 7.2 + 24}
+          width={b.label.length * 7.6 + 24}
           height="20"
           rx="10"
-          fill={isDark ? "#0D111B" : "#FFFFFF"}
-          stroke={on ? (isDark ? "#29D3C2" : "#6C4DFF") : (isDark ? "#242B39" : "#E4E0FF")}
+          fill={isDark ? "#161B22" : "#FFFFFF"}
+          stroke={on ? (isDark ? "#29D3C2" : "#6C4DFF") : (isDark ? "#30363D" : "#E5E5E0")}
           strokeWidth={on ? "2" : "1"}
-          filter={on ? "drop-shadow(0 2px 8px rgba(108,77,255,0.4))" : undefined}
+          filter={on ? "drop-shadow(0 2px 8px rgba(108,77,255,0.35))" : undefined}
         />
         <text
           textAnchor="middle"
           y="4"
           fontSize="9.5"
           fontWeight="600"
-          fontFamily="var(--font-mono)"
-          fill={isDark ? "#F3F5FA" : "#19143D"}
+          fontFamily="var(--font-mono), monospace"
+          fill={isDark ? "#E6EDF3" : "#1E2022"}
         >
           {b.label}
         </text>
@@ -126,7 +126,7 @@ export default function City({
   const showGraph = forceMode === "graph" || isDark;
 
   if (showGraph) {
-    // Dark Theme Technical Node Graph matching Reference 2 (PDF 2)
+    // Dark Theme Technical Node Graph matching Reference 2 & Requirements
     return (
       <svg
         viewBox="0 0 580 320"
@@ -137,69 +137,65 @@ export default function City({
         <defs>
           {/* Subtle grid pattern */}
           <pattern id="dark-grid" width="30" height="30" patternUnits="userSpaceOnUse">
-            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#242B39" strokeWidth="0.5" strokeOpacity="0.4" />
+            <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#30363D" strokeWidth="0.5" strokeOpacity="0.45" />
           </pattern>
           {/* Glow filter */}
           <filter id="cyan-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-          <filter id="purple-glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feGaussianBlur stdDeviation="3.5" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
           </filter>
           {/* Gradients */}
           <linearGradient id="edge-cyan-purple" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#29D3C2" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#8B7CFF" stopOpacity="0.8" />
+            <stop offset="0%" stopColor="#29D3C2" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#8B7CFF" stopOpacity="0.9" />
           </linearGradient>
           <linearGradient id="edge-purple-cyan" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#8B7CFF" stopOpacity="0.8" />
-            <stop offset="100%" stopColor="#29D3C2" stopOpacity="0.8" />
+            <stop offset="0%" stopColor="#8B7CFF" stopOpacity="0.9" />
+            <stop offset="100%" stopColor="#29D3C2" stopOpacity="0.9" />
           </linearGradient>
         </defs>
 
         {/* Ambient Dark Canvas Background */}
-        <rect width="100%" height="100%" rx="16" fill="#0A0F19" />
+        <rect width="100%" height="100%" rx="16" fill="#0D1117" />
         <rect width="100%" height="100%" rx="16" fill="url(#dark-grid)" />
 
         {/* Orbital rings */}
-        <circle cx="300" cy="150" r="160" fill="none" stroke="#242B39" strokeWidth="1" strokeDasharray="4 6" opacity="0.5" />
-        <circle cx="300" cy="150" r="100" fill="none" stroke="#29D3C2" strokeWidth="0.75" strokeDasharray="3 4" opacity="0.3" />
+        <circle cx="305" cy="150" r="160" fill="none" stroke="#30363D" strokeWidth="1" strokeDasharray="4 6" opacity="0.45" />
+        <circle cx="305" cy="150" r="100" fill="none" stroke="#29D3C2" strokeWidth="0.75" strokeDasharray="3 4" opacity="0.25" />
 
         {/* Connecting Edges */}
         <g strokeLinecap="round">
           {/* LoginForm -> POST /auth */}
           <path
-            d="M 125 150 Q 150 120 170 105"
+            d="M 125 145 Q 155 115 180 100"
             stroke="url(#edge-cyan-purple)"
             strokeWidth="2.5"
             fill="none"
           />
           {/* POST /auth -> authorize() */}
           <path
-            d="M 230 105 Q 260 120 280 145"
+            d="M 235 100 Q 265 115 295 140"
             stroke="url(#edge-purple-cyan)"
             strokeWidth="2.5"
             fill="none"
           />
           {/* authorize() -> UserService */}
           <path
-            d="M 335 145 Q 365 115 390 105"
+            d="M 335 140 Q 370 115 405 100"
             stroke="#8B7CFF"
             strokeWidth="2.5"
             fill="none"
           />
           {/* UserService -> users table */}
           <path
-            d="M 445 105 Q 470 135 485 170"
+            d="M 450 100 Q 480 130 495 165"
             stroke="#29D3C2"
             strokeWidth="2.5"
             fill="none"
           />
           {/* authorize() -> test_auth.py */}
           <path
-            d="M 300 165 L 290 225"
+            d="M 305 165 L 305 224"
             stroke="#FF5A5F"
             strokeWidth="2"
             strokeDasharray="4 4"
@@ -208,13 +204,18 @@ export default function City({
         </g>
 
         {/* Animated pulses along the edges */}
-        <circle cx="150" cy="125" r="3" fill="#29D3C2" className="animate-ping" opacity="0.75" />
-        <circle cx="365" cy="125" r="3" fill="#8B7CFF" className="animate-ping" opacity="0.75" />
-        <circle cx="470" cy="135" r="3" fill="#2FD6A0" className="animate-ping" opacity="0.75" />
+        <circle cx="155" cy="122" r="3" fill="#29D3C2" className="animate-ping" opacity="0.75" />
+        <circle cx="370" cy="122" r="3" fill="#8B7CFF" className="animate-ping" opacity="0.75" />
+        <circle cx="475" cy="132" r="3" fill="#2FD6A0" className="animate-ping" opacity="0.75" />
 
         {/* Nodes */}
         {GRAPH_NODES.map((node) => {
           const isSelected = selected === node.id || (!selected && node.id === "auth");
+          const pillWidth = Math.max(104, node.label.length * 7.5 + 30);
+          const pillHeight = 32;
+          const pillX = -pillWidth / 2;
+          const pillY = -pillHeight / 2;
+
           return (
             <g
               key={node.id}
@@ -224,33 +225,33 @@ export default function City({
             >
               {/* Glow when selected */}
               {isSelected && (
-                <circle cx="0" cy="0" r="32" fill={node.color} opacity="0.15" className="animate-pulse" />
+                <circle cx="0" cy="0" r="34" fill={node.color} opacity="0.15" className="animate-pulse" />
               )}
 
               {/* Node container */}
               <rect
-                x="-48"
-                y="-18"
-                width="96"
-                height="36"
-                rx="18"
-                fill="#0D111B"
-                stroke={isSelected ? node.color : "#242B39"}
+                x={pillX}
+                y={pillY}
+                width={pillWidth}
+                height={pillHeight}
+                rx="16"
+                fill="#161B22"
+                stroke={isSelected ? node.color : "#30363D"}
                 strokeWidth={isSelected ? "2.5" : "1.5"}
                 filter={isSelected ? "url(#cyan-glow)" : undefined}
               />
 
-              {/* Type pill */}
-              <circle cx="-32" cy="0" r="5" fill={node.color} />
+              {/* Type pill dot */}
+              <circle cx={pillX + 13} cy="0" r="4.5" fill={node.color} />
 
               {/* Label */}
               <text
-                x="-20"
-                y="4"
-                fontSize="10"
+                x={pillX + 24}
+                y="3.5"
+                fontSize="9.5"
                 fontWeight="700"
-                fontFamily="var(--font-mono)"
-                fill="#F3F5FA"
+                fontFamily="var(--font-mono), monospace"
+                fill="#E6EDF3"
               >
                 {node.label}
               </text>
@@ -271,16 +272,16 @@ export default function City({
     >
       <defs>
         <filter id="city-shadow" x="-5%" y="-5%" width="110%" height="110%">
-          <feDropShadow dx="0" dy="16" stdDeviation="16" floodColor="#6C4DFF" floodOpacity="0.15" />
+          <feDropShadow dx="0" dy="16" stdDeviation="16" floodColor="#6C4DFF" floodOpacity="0.12" />
         </filter>
       </defs>
 
       {/* Isometric Island Ground */}
-      <polygon points="230,285 440,185 440,170 230,270 20,170 20,185" fill="#DADFFC" />
-      <polygon points="230,70 440,170 230,270 20,170" fill="#FFFFFF" stroke="#E8E5F4" strokeWidth="1.5" />
+      <polygon points="230,285 440,185 440,170 230,270 20,170 20,185" fill="#DDE1FC" />
+      <polygon points="230,70 440,170 230,270 20,170" fill="#FFFFFF" stroke="#E5E5E0" strokeWidth="1.5" />
 
       {/* Roads connecting buildings */}
-      <g stroke="#E6E9FF" strokeWidth="10" strokeLinecap="round" fill="none">
+      <g stroke="#EAE5FF" strokeWidth="10" strokeLinecap="round" fill="none">
         <path d="M150 190L255 150L335 190" />
         <path d="M255 150L255 210" />
         <path d="M175 225L255 225L335 190" />

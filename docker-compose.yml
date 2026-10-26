@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  codeatlas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: codeatlas:latest
+    container_name: codeatlas-production
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-production-codeatlas-secret-key-32chars}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+    volumes:
+      # Persistent storage for JSON database, indexed repository files, and user sessions
+      - codeatlas_data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 2048M
+      reservations:
+        cpus: "0.5"
+        memory: 512M
+
+volumes:
+  codeatlas_data:
+    driver: local

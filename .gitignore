@@ -1,33 +1,41 @@
-# dependencies
+# Dependencies
 /node_modules
 /.pnp
 .pnp.js
 
-# testing
+# Testing & Coverage
 /coverage
 
-# next.js
+# Next.js Build Outputs & Static Export
 /.next/
 /out/
+/.pages_export_temp/
+/.api_server_backup/
+/.test_temp/
 
-# production
+# Production Builds
 /build
 
-# misc
+# Miscellaneous
 .DS_Store
+Thumbs.db
 *.pem
+*.tmp
 
-# debug
+# Debug Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# local env files
+# Local Environment & Secrets
+.env
 .env*.local
+.env.production
+.env.development
 
-# vercel
+# Vercel
 .vercel
 
-# typescript
+# TypeScript & Build Caches
 *.tsbuildinfo
 next-env.d.ts

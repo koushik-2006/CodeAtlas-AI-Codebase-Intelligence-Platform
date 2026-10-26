@@ -1,334 +1,282 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
-import City from "@/components/City";
-import { useTheme } from "@/components/ThemeProvider";
-import { useRouter } from "next/navigation";
+import { useTheme } from "@/hooks/useTheme";
+import { useRepositories } from "@/hooks/useRepositories";
+import { ArchitectureCanvas } from "@/components/architecture/ArchitectureCanvas";
+import { SelectedNodePanel } from "@/components/architecture/SelectedNodePanel";
+import { GraphPathExplorer } from "@/components/architecture/GraphPathExplorer";
+import { ArchitectureTableAlternative } from "@/components/architecture/ArchitectureTableAlternative";
 import {
-  GitBranch,
+  architectureService,
+  SAMPLE_PROJECT_NODES,
+  SAMPLE_PROJECT_EDGES,
+  GraphMetrics,
+} from "@/services/architecture-service";
+import { ArchitectureNode, ArchitectureEdge } from "@/types/architecture";
+import {
   Network,
   Building2,
-  ExternalLink,
-  Code2,
-  FileCode,
+  Table2,
+  FolderGit2,
+  Route,
+  Activity,
   Layers,
-  Sparkles,
-  ArrowRight,
-  Database,
-  CheckCircle2,
-  Share2,
-  Maximize2,
+  AlertCircle,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 
-interface NodeDetail {
-  id: string;
-  name: string;
-  type: string;
-  file: string;
-  lines: string;
-  description: string;
-  code: string;
-  callers: string[];
-  callees: string[];
-  tests: string[];
-}
-
-const NODES_DATA: Record<string, NodeDetail> = {
-  auth: {
-    id: "auth",
-    name: "auth.py / authorize()",
-    type: "Core Function",
-    file: "src/auth.py",
-    lines: "14 to 18",
-    description: "login() lines 14 to 18. Called by POST /auth, calls UserService, covered by test_auth.py.",
-    code: `def login(email, pw):
-    user = db.find(email)
-    if not user:
-        raise AuthError()
-    return verify(user, pw)`,
-    callers: ["POST /auth", "LoginForm.tsx"],
-    callees: ["UserService", "verify()"],
-    tests: ["test_auth.py:test_login_ok()"],
-  },
-  api: {
-    id: "api",
-    name: "POST /auth",
-    type: "API Route",
-    file: "src/api/routes.py",
-    lines: "8 to 15",
-    description: "Routes that connect the client login form to the authorization core backend.",
-    code: `@router.post("/auth")
-async def handle_login(req: Request):
-    return auth.login(req.email, req.password)`,
-    callers: ["LoginForm.tsx"],
-    callees: ["auth.py:authorize()"],
-    tests: ["test_auth.py:test_api_route()"],
-  },
-  login: {
-    id: "login",
-    name: "LoginForm.tsx",
-    type: "Component",
-    file: "src/LoginForm.tsx",
-    lines: "1 to 24",
-    description: "Client login form. Submits user email & password credentials to POST /auth.",
-    code: `const res = await fetch("/api/auth", {
-  method: "POST",
-  body: JSON.stringify({ email, pw }),
-});`,
-    callers: ["User Browser"],
-    callees: ["POST /auth"],
-    tests: ["LoginForm.test.tsx"],
-  },
-  service: {
-    id: "service",
-    name: "UserService",
-    type: "Service",
-    file: "src/services/UserService.ts",
-    lines: "5 to 20",
-    description: "Looks up users in the database and creates authenticated session records.",
-    code: `class UserService:
-    def find(self, email):
-        return db.query("SELECT * FROM users WHERE email = %s", email)`,
-    callers: ["auth.py:authorize()"],
-    callees: ["users table"],
-    tests: ["UserService.test.ts"],
-  },
-  db: {
-    id: "db",
-    name: "users table",
-    type: "Database Storage",
-    file: "schema.sql",
-    lines: "10 to 18",
-    description: "PostgreSQL table storing user profiles, hashed credentials, and role permissions.",
-    code: `CREATE TABLE users (
-    id UUID PRIMARY KEY,
-    email VARCHAR(255) UNIQUE,
-    password_hash VARCHAR(255)
-);`,
-    callers: ["UserService"],
-    callees: [],
-    tests: ["db_migration_test.py"],
-  },
-  tests: {
-    id: "tests",
-    name: "test_auth.py",
-    type: "Test Suite",
-    file: "tests/test_auth.py",
-    lines: "1 to 14",
-    description: "Unit and integration tests that verify auth.py login logic and error conditions.",
-    code: `def test_login_ok():
-    user = create_mock_user()
-    token = login(user.email, "secret")
-    assert token is not None`,
-    callers: ["CI Test Runner"],
-    callees: ["auth.py:authorize()"],
-    tests: ["pytest runner"],
-  },
-};
-
-export default function ArchitecturePage() {
-  const router = useRouter();
+function ArchitectureContent() {
+  const searchParams = useSearchParams();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const { repositories } = useRepositories();
 
-  const [selectedNode, setSelectedNode] = useState("auth");
-  const [viewStyle, setViewStyle] = useState<"graph" | "city">("graph");
+  const [selectedRepo, setSelectedRepo] = useState<string>("sample-project");
+  const [nodes, setNodes] = useState<ArchitectureNode[]>(SAMPLE_PROJECT_NODES);
+  const [edges, setEdges] = useState<ArchitectureEdge[]>(SAMPLE_PROJECT_EDGES);
+  const [metrics, setMetrics] = useState<GraphMetrics | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string>("node-login-user");
+  const [viewStyle, setViewStyle] = useState<"graph" | "city" | "table">("graph");
+  const [activeTab, setActiveTab] = useState<"inspector" | "path">("inspector");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [highlightedPathIds, setHighlightedPathIds] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const currentNode = NODES_DATA[selectedNode] || NODES_DATA.auth;
+  // Load graph data on mount or repo change
+  useEffect(() => {
+    let isMounted = true;
+    setIsLoading(true);
 
-  const handleOpenSource = () => {
-    router.push("/assistant");
-  };
+    architectureService.getGraphForRepository(selectedRepo).then(({ data, metrics: resMetrics }) => {
+      if (!isMounted) return;
+      setNodes(data.nodes);
+      setEdges(data.edges);
+      if (resMetrics) setMetrics(resMetrics);
+
+      // Check if URL search param requests a specific node
+      const nodeFromUrl = searchParams?.get("node");
+      if (nodeFromUrl && data.nodes.some((n) => n.id === nodeFromUrl)) {
+        setSelectedNodeId(nodeFromUrl);
+      } else if (data.nodes.length > 0) {
+        setSelectedNodeId(data.nodes[3]?.id || data.nodes[0].id);
+      }
+      setIsLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedRepo, searchParams]);
+
+  const currentNode =
+    nodes.find((n) => n.id === selectedNodeId) || nodes[0] || {
+      id: "loading",
+      label: "Loading...",
+      type: "Function",
+      file: "src/services/auth.ts",
+      description: "Loading node graph data...",
+    };
 
   return (
-    <div>
+    <div className="space-y-4">
       <PageHeader
         title="Architecture Graph"
-        sub={isDark ? "Sample graph shown for design purposes" : "my-project · City map · sample content for design"}
+        sub="Visualize relationships between source files, functions, APIs, services, database models, and tests."
       />
 
-      {/* Control bar: View Style Switcher & Graph Filters */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-2 rounded-2xl p-1 border border-[var(--border-color)] bg-[var(--bg-surface)]">
+      {/* Control Bar: Repository Selector + Metrics + View Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+        {/* Repository Selector */}
+        <div className="flex items-center gap-2 text-xs font-semibold">
+          <FolderGit2 className="w-4 h-4 text-[var(--primary)]" />
+          <span className="text-[var(--text-secondary)]">Repository:</span>
+          <select
+            value={selectedRepo}
+            onChange={(e) => {
+              setSelectedRepo(e.target.value);
+              setHighlightedPathIds([]);
+            }}
+            aria-label="Select repository for architecture graph"
+            className={`py-1 px-2.5 rounded-lg text-xs font-bold border outline-none cursor-pointer ${
+              isDark
+                ? "bg-[#0D1117] border-[#30363D] text-[#E6EDF3]"
+                : "bg-white border-[#E5E5E0] text-[#1E2022]"
+            }`}
+          >
+            {repositories.length > 0 ? (
+              repositories.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name} ({r.status === "ready" ? "Indexed" : "Connected"})
+                </option>
+              ))
+            ) : (
+              <option value="sample-project">sample-project (Indexed)</option>
+            )}
+          </select>
+        </div>
+
+        {/* Quick Graph Summary Pill */}
+        <div className="flex items-center gap-3 text-xs font-mono text-[var(--text-secondary)]">
+          <span className="inline-flex items-center gap-1">
+            <Layers className="w-3.5 h-3.5 text-[var(--primary)]" />
+            <strong className="text-[var(--text-primary)]">{nodes.length}</strong> Entities
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Zap className="w-3.5 h-3.5 text-teal-500" />
+            <strong className="text-[var(--text-primary)]">{edges.length}</strong> Relationships
+          </span>
+          {metrics && metrics.circularDependencies.length > 0 && (
+            <span className="inline-flex items-center gap-1 text-amber-500 font-bold">
+              <AlertCircle className="w-3.5 h-3.5" />
+              {metrics.circularDependencies.length} Cycle(s)
+            </span>
+          )}
+        </div>
+
+        {/* View Switcher: Graph View vs City Map View */}
+        <div className="flex items-center gap-1 rounded-xl p-1 border border-[var(--border-color)] bg-[var(--bg-page)]">
           <button
+            type="button"
             onClick={() => setViewStyle("graph")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               viewStyle === "graph"
                 ? isDark
-                  ? "bg-[#29D3C2] text-[#070A12] shadow-sm"
-                  : "bg-[#6C4DFF] text-white shadow-sm"
+                  ? "bg-[#29D3C2] text-[#070A12] shadow-xs"
+                  : "bg-[#6C4DFF] text-white shadow-xs"
                 : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
             <Network className="w-3.5 h-3.5" />
-            Graph View
+            <span>Graph View</span>
           </button>
           <button
+            type="button"
             onClick={() => setViewStyle("city")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
               viewStyle === "city"
                 ? isDark
-                  ? "bg-[#29D3C2] text-[#070A12] shadow-sm"
-                  : "bg-[#6C4DFF] text-white shadow-sm"
+                  ? "bg-[#29D3C2] text-[#070A12] shadow-xs"
+                  : "bg-[#6C4DFF] text-white shadow-xs"
                 : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
             }`}
           >
             <Building2 className="w-3.5 h-3.5" />
-            City Map View
+            <span>City Map View</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewStyle("table")}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              viewStyle === "table"
+                ? isDark
+                  ? "bg-[#29D3C2] text-[#070A12] shadow-xs"
+                  : "bg-[#6C4DFF] text-white shadow-xs"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            }`}
+          >
+            <Table2 className="w-3.5 h-3.5" />
+            <span>Accessible Table</span>
           </button>
         </div>
-
-        <div className="flex items-center gap-2 font-mono text-xs text-[var(--text-secondary)]">
-          <span>Click any node or building to inspect call relationships</span>
-        </div>
       </div>
 
-      {/* Main Canvas & Detail Sidebar Grid */}
-      <div className="grid gap-6 lg:grid-cols-12 min-h-[580px]">
-        {/* Canvas (8 cols) */}
-        <div
-          className={`lg:col-span-8 app-card p-4 sm:p-6 flex flex-col justify-between relative overflow-hidden ${
-            isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white"
-          }`}
-        >
-          {/* Canvas Sub-Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-[var(--border-color)]">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="font-mono text-xs text-[var(--text-secondary)]">
-                Repository AST: 6 Symbols · 5 Edges
-              </span>
-            </div>
-            <span className="text-[10px] font-mono uppercase text-[var(--text-secondary)] bg-[var(--border-color)]/40 px-2 py-0.5 rounded">
-              Interactive Canvas
-            </span>
-          </div>
-
-          {/* Interactive SVG Canvas */}
-          <div className="my-auto py-4">
-            <City
-              selected={selectedNode}
-              onPick={setSelectedNode}
-              className="w-full max-h-[460px] mx-auto"
-              forceMode={viewStyle === "city" ? "light" : "graph"}
+      {/* Main Grid: Architecture Canvas & Inspector / Path Tabs */}
+      <div className="grid gap-5 lg:grid-cols-12 min-h-[600px] items-stretch">
+        {/* Left Column: Canvas or Table */}
+        <div className="lg:col-span-8 flex flex-col">
+          {viewStyle === "table" ? (
+            <ArchitectureTableAlternative
+              nodes={nodes}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={setSelectedNodeId}
+              repositoryId={selectedRepo}
             />
-          </div>
-
-          {/* Canvas Footer */}
-          <div className="pt-3 border-t border-[var(--border-color)] flex items-center justify-between text-xs text-[var(--text-secondary)]">
-            <span>Selected: <strong className="text-[var(--text-primary)]">{currentNode.name}</strong></span>
-            <span className="font-mono text-[10px]">Panned & Scaled 100%</span>
-          </div>
+          ) : (
+            <ArchitectureCanvas
+              nodes={nodes}
+              edges={edges}
+              selectedNodeId={selectedNodeId}
+              onSelectNode={setSelectedNodeId}
+              viewStyle={viewStyle}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+              highlightedNodeIds={highlightedPathIds}
+            />
+          )}
         </div>
 
-        {/* Selected Node / Building Panel (4 cols - matching PDF 1 Page 4 & PDF 2 Page 6) */}
-        <aside
-          className={`lg:col-span-4 app-card p-6 flex flex-col justify-between ${
-            isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white"
-          }`}
-        >
-          <div>
-            <div className="flex items-center justify-between">
-              <span className="font-mono text-xs uppercase tracking-wider text-[var(--primary)] font-bold">
-                {viewStyle === "city" ? "SELECTED BUILDING" : "SELECTED NODE"}
-              </span>
-              <span className="font-mono text-[10px] text-[var(--text-secondary)] bg-[var(--border-color)]/50 px-2 py-0.5 rounded">
-                {currentNode.type}
-              </span>
-            </div>
-
-            <h2 className="mt-3 text-2xl font-extrabold tracking-tight">
-              {currentNode.name}
-            </h2>
-
-            <p className="mt-2 text-xs sm:text-sm font-medium text-[var(--text-secondary)] leading-relaxed">
-              {currentNode.description}
-            </p>
-
-            {/* Source Reference & Line Range */}
-            <div className="mt-4 p-3 rounded-xl bg-[var(--bg-page)] border border-[var(--border-color)] text-xs">
-              <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase block mb-1">
-                Source Location
-              </span>
-              <div className="flex items-center justify-between font-mono">
-                <span className="font-bold text-[var(--text-primary)]">{currentNode.file}</span>
-                <span className="text-[var(--primary)] font-semibold">Lines {currentNode.lines}</span>
-              </div>
-            </div>
-
-            {/* Code Snippet Preview */}
-            <div className="mt-4">
-              <span className="text-[10px] font-mono text-[var(--text-secondary)] uppercase block mb-1.5">
-                AST Implementation Snippet
-              </span>
-              <pre
-                className={`p-3.5 rounded-2xl overflow-x-auto font-mono text-xs leading-5 border ${
-                  isDark
-                    ? "bg-[#0A0F19] border-[#242B39] text-[#F3F5FA]"
-                    : "bg-[#FAF9FF] border-[#E8E5F4] text-[#19143D]"
-                }`}
-              >
-                {currentNode.code}
-              </pre>
-            </div>
-
-            {/* Graph Connections */}
-            <div className="mt-4 space-y-2 text-xs">
-              {currentNode.callers.length > 0 && (
-                <div>
-                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase">
-                    Called By (Incoming):
-                  </span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {currentNode.callers.map((c) => (
-                      <span
-                        key={c}
-                        className="font-mono text-[10px] px-2 py-0.5 rounded bg-[var(--bg-page)] border border-[var(--border-color)]"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {currentNode.callees.length > 0 && (
-                <div>
-                  <span className="text-[10px] font-bold text-[var(--text-secondary)] uppercase">
-                    Calls (Outgoing):
-                  </span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {currentNode.callees.map((c) => (
-                      <span
-                        key={c}
-                        className="font-mono text-[10px] px-2 py-0.5 rounded bg-[var(--bg-page)] border border-[var(--border-color)]"
-                      >
-                        {c}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Open Source Action Button */}
-          <div className="mt-6 pt-4 border-t border-[var(--border-color)]">
+        {/* Right Column: Inspector or Path Explorer Tabs */}
+        <div className="lg:col-span-4 flex flex-col space-y-3">
+          {/* Sub Navigation: Inspector vs Path Explorer */}
+          <div className="flex items-center rounded-xl p-1 border border-[var(--border-color)] bg-[var(--bg-surface)] shrink-0">
             <button
-              onClick={handleOpenSource}
-              className={`w-full py-3 px-5 rounded-full font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all active:scale-95 ${
-                isDark
-                  ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
-                  : "bg-[#19143D] text-white hover:bg-[#2a225f]"
+              type="button"
+              onClick={() => setActiveTab("inspector")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === "inspector"
+                  ? isDark
+                    ? "bg-[#29D3C2] text-[#070A12]"
+                    : "bg-[#6C4DFF] text-white"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               }`}
             >
-              <ExternalLink className="w-4 h-4" />
-              Open source
+              <Activity className="w-3.5 h-3.5" />
+              <span>Node Inspector</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("path")}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === "path"
+                  ? isDark
+                    ? "bg-[#29D3C2] text-[#070A12]"
+                    : "bg-[#6C4DFF] text-white"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Route className="w-3.5 h-3.5" />
+              <span>Path Explorer</span>
             </button>
           </div>
-        </aside>
+
+          {/* Panel Display */}
+          <div className="flex-1 flex flex-col">
+            {activeTab === "inspector" ? (
+              <SelectedNodePanel
+                currentNode={currentNode}
+                repositoryId={selectedRepo}
+                viewStyle={viewStyle === "city" ? "city" : "graph"}
+                onSelectNode={setSelectedNodeId}
+              />
+            ) : (
+              <GraphPathExplorer
+                repositoryId={selectedRepo}
+                nodes={nodes}
+                onSelectNode={setSelectedNodeId}
+                onHighlightPath={setHighlightedPathIds}
+              />
+            )}
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+export default function ArchitecturePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="p-8 text-xs font-mono text-[var(--text-secondary)]">
+          Loading Architecture Graph...
+        </div>
+      }
+    >
+      <ArchitectureContent />
+    </Suspense>
   );
 }

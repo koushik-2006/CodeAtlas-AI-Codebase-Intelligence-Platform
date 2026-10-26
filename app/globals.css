@@ -14,8 +14,12 @@
   --primary: #6C4DFF;
   --primary-hover: #5838E6;
   --primary-subtle: #EAE5FF;
+  --soft-violet: #EAE5FF;
+  --soft-mint: #D7F7EA;
+  --soft-yellow: #FFF0BF;
+  --soft-coral: #FFE0E3;
   --accent: #2FD6A0;
-  --card-shadow: 0 16px 36px -16px rgba(108, 77, 255, 0.12);
+  --card-shadow: 0 16px 36px -16px rgba(108, 77, 255, 0.10);
 }
 
 .dark {
@@ -31,14 +35,18 @@
   --primary-hover: #22B5A6;
   --primary-subtle: rgba(41, 211, 194, 0.12);
   --accent: #8B7CFF;
-  --card-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.5);
+  --card-shadow: 0 16px 36px -16px rgba(0, 0, 0, 0.6);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
   background-color: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--font-display), system-ui, -apple-system, sans-serif;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   overflow-x: hidden;
 }
 
@@ -46,6 +54,13 @@ body {
   background-image: radial-gradient(circle at 50% 0%, rgba(41, 211, 194, 0.05), transparent 45%),
                     radial-gradient(circle at 100% 100%, rgba(139, 124, 255, 0.04), transparent 45%);
   background-attachment: fixed;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+  pointer-events: none;
 }
 
 :focus-visible {
