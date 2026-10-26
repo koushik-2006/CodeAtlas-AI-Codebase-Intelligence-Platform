@@ -133,14 +133,20 @@ export async function POST(req: Request) {
           verifiedName = googleInfo.name || verifiedName;
           verifiedPicture = googleInfo.picture || verifiedPicture;
           googleSub = googleInfo.sub || googleSub;
-        } else if (googleVerifyRes.status === 400) {
+        } else {
           return NextResponse.json(
             { success: false, error: "Invalid Google ID token signature or revoked token." },
             { status: 401 }
           );
         }
-      } catch {
-        // Network timeout / connection error fallback: structural claims verified above
+      } catch (networkErr: any) {
+        console.warn("[Google Auth Route] Google TokenInfo verification network unreachable:", networkErr?.message);
+        if (process.env.NODE_ENV === "production") {
+          return NextResponse.json(
+            { success: false, error: "Google verification service is temporarily unreachable." },
+            { status: 502 }
+          );
+        }
       }
     }
 
