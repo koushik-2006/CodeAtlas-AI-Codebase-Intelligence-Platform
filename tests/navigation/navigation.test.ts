@@ -1,4 +1,4 @@
-import { MAIN_NAVIGATION } from "../../lib/navigation";
+import { MAIN_NAVIGATION } from "@/lib/navigation";
 
 export function testNavigation() {
   const hrefs = MAIN_NAVIGATION.map((item) => item.href);
@@ -16,6 +16,7 @@ export function testNavigation() {
     "/change-impact",
     "/code-review",
     "/activity",
+    "/system-health",
     "/settings",
   ];
 
@@ -25,5 +26,5 @@ export function testNavigation() {
 
   const uniqueHrefs = new Set(hrefs);
   console.assert(uniqueHrefs.size === hrefs.length, "Navigation hrefs should be unique");
-  console.assert(hrefs.length === 14, `Expected 14 navigation items, got ${hrefs.length}`);
+  console.assert(hrefs.length === 15, `Expected 15 navigation items, got ${hrefs.length}`);
 }

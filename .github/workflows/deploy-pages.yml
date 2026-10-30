@@ -18,7 +18,6 @@ permissions:
   id-token: write
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
 concurrency:
   group: "pages"
   cancel-in-progress: false
@@ -38,54 +37,49 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
+        working-directory: frontend
         run: npm ci
 
-      - name: Code Quality & Lint Check
-        run: npm run lint
-
       - name: TypeScript Static Typecheck
+        working-directory: frontend
         run: npm run typecheck
 
-      - name: Run Core Test Suites
-        run: |
-          npm run test:unit
-          npm run test:integration
-          npm run test:google-auth
-          npm run test:auth-system
-          npm run test:phase21
-
       - name: Build Static Export for GitHub Pages
+        working-directory: frontend
         run: npm run build:pages
         env:
-          NEXT_PUBLIC_APP_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}"
+          NEXT_PUBLIC_APP_URL: "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name || 'CodeAtlas-AI-Codebase-Intelligence-Platform' }}"
           NEXT_PUBLIC_API_URL: ${{ inputs.api_url || vars.NEXT_PUBLIC_API_URL || '/api' }}
           NEXT_PUBLIC_API_BASE_URL: ${{ inputs.api_url || vars.NEXT_PUBLIC_API_BASE_URL || '/api' }}
+          NEXT_PUBLIC_DEMO_MODE: ${{ (inputs.api_url || vars.NEXT_PUBLIC_API_URL) && 'false' || 'true' }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_PAGES: "true"
           STATIC_EXPORT: "true"
           NEXT_TELEMETRY_DISABLED: "1"
 
       - name: Verify Static Export Output Directory
         run: |
-          if [ ! -d "out" ]; then
-            echo "::error::Static export directory 'out' does not exist!"
+          if [ ! -d "frontend/out" ]; then
+            echo "::error::Static export directory 'frontend/out' does not exist!"
             exit 1
           fi
-          if [ ! -f "out/index.html" ]; then
-            echo "::error::Index HTML file 'out/index.html' is missing!"
+          if [ ! -f "frontend/out/index.html" ]; then
+            echo "::error::Index HTML file 'frontend/out/index.html' is missing!"
             exit 1
           fi
-          if [ ! -f "out/.nojekyll" ]; then
-            echo "::error::GitHub Pages asset directive 'out/.nojekyll' is missing!"
+          if [ ! -f "frontend/out/.nojekyll" ]; then
+            echo "::error::GitHub Pages asset directive 'frontend/out/.nojekyll' is missing!"
             exit 1
           fi
-          echo "Static export verified with $(ls -1 out | wc -l) top-level entries."
+          echo "Static export verified with $(ls -1 frontend/out | wc -l) top-level entries."
 
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./out
+          path: ./frontend/out
 
   deploy:
     name: Deploy to GitHub Pages

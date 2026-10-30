@@ -8,63 +8,63 @@ export default {
       colors: {
         // Semantic dynamic tokens
         canvas: {
-          light: "#FAF9FF",
-          dark: "#070A12",
+          light: "#F8FAFC",
+          dark: "#0B1020",
         },
         panel: {
           light: "#FFFFFF",
-          dark: "#0D111B",
-          darker: "#0A0F19",
-          elevated: "#111725",
+          dark: "#111827",
+          darker: "#0F172A",
+          elevated: "#151D30",
         },
         border: {
-          light: "#E8E5F4",
-          dark: "#242B39",
+          light: "#E2E8F0",
+          dark: "#1E293B",
         },
         ink: {
-          DEFAULT: "#19143D",
-          light: "#19143D",
-          dark: "#F3F5FA",
+          DEFAULT: "#0F172A",
+          light: "#0F172A",
+          dark: "#F8FAFC",
         },
         muted: {
-          DEFAULT: "#68677D",
-          light: "#68677D",
-          dark: "#9AA4B5",
+          DEFAULT: "#64748B",
+          light: "#64748B",
+          dark: "#94A3B8",
         },
-        // Theme 1 (Light Accent Palette)
+        // Primary Brand Accent: Electric Violet
         brand: {
-          DEFAULT: "#6C4DFF",
-          light: "#6C4DFF",
-          dark: "#4B31D6",
-          soft: "#EAE5FF",
+          DEFAULT: "#7C5CFC",
+          light: "#7C5CFC",
+          dark: "#6A4BE8",
+          soft: "#EDE9FE",
         },
         sun: {
           DEFAULT: "#FFC53D",
-          soft: "#FFF0BF",
+          soft: "#FEF3C7",
           dark: "#E0A100",
         },
         mint: {
           DEFAULT: "#2FD6A0",
-          soft: "#D7F7EA",
+          soft: "#CCFBF1",
           dark: "#1BA97B",
         },
         coral: {
           DEFAULT: "#FF5A5F",
-          soft: "#FFE0E3",
+          soft: "#FEE2E2",
           dark: "#D93A40",
         },
-        lilac: "#EAE5FF",
-        rose: "#FFE0E3",
-        mintsoft: "#D7F7EA",
-        sunsoft: "#FFF0BF",
-        sky: "#E6E9FF",
+        lilac: "#EDE9FE",
+        rose: "#FEE2E2",
+        mintsoft: "#CCFBF1",
+        sunsoft: "#FEF3C7",
+        sky: "#E0F2FE",
 
-        // Theme 2 (Dark Accent Palette)
+        // Secondary Accent: Cyan
         cyan: {
-          DEFAULT: "#29D3C2",
-          glow: "rgba(41, 211, 194, 0.25)",
+          DEFAULT: "#22D3EE",
+          glow: "rgba(34, 211, 238, 0.25)",
         },
-        techviolet: "#8B7CFF",
+        techviolet: "#7C5CFC",
         techgold: "#F3C969",
       },
       fontFamily: {

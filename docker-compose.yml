@@ -1,41 +1,66 @@
 version: "3.8"
 
 services:
-  codeatlas:
+  frontend:
     build:
-      context: .
+      context: ./frontend
       dockerfile: Dockerfile
-    image: codeatlas:latest
-    container_name: codeatlas-production
+    container_name: codeatlas-frontend
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=production
-      - PORT=3000
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID:-}
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: codeatlas-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+      - DATABASE_TYPE=postgres
+      - DATABASE_URL=postgresql+psycopg://codeatlas_user:codeatlas_password@postgres:5432/codeatlas
+      - SECRET_KEY=${SECRET_KEY:-codeatlas-production-secret-key-at-least-32-chars-long}
+      - FRONTEND_URL=http://localhost:3000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-production-codeatlas-secret-key-32chars}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: codeatlas-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=codeatlas_user
+      - POSTGRES_PASSWORD=codeatlas_password
+      - POSTGRES_DB=codeatlas
     volumes:
-      # Persistent storage for JSON database, indexed repository files, and user sessions
-      - codeatlas_data:/app/data
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schemas/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - ./database/seeds/seed_dev.sql:/docker-entrypoint-initdb.d/02_seeds.sql:ro
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U codeatlas_user -d codeatlas"]
+      interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 15s
-    resources:
-      limits:
-        cpus: "2.0"
-        memory: 2048M
-      reservations:
-        cpus: "0.5"
-        memory: 512M
+      retries: 5
+      start_period: 10s
 
 volumes:
-  codeatlas_data:
+  postgres_data:
     driver: local

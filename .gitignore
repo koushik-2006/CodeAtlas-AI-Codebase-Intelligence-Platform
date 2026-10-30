@@ -1,37 +1,78 @@
+# =============================================================================
+# CodeAtlas Git Protection & Ignore Configuration
+# =============================================================================
+
 # Dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.js
 
 # Testing & Coverage
 /coverage
+.pytest_cache/
 
 # Next.js Build Outputs & Static Export
-/.next/
-/out/
-/.pages_export_temp/
+.next/
+out/
+frontend/out/
+.pages_export_temp/
+pages_export_workspace/
+frontend/pages_export_workspace/
 /.api_server_backup/
 /.test_temp/
 
 # Production Builds
 /build
 
-# Miscellaneous
+# Miscellaneous & System
 .DS_Store
 Thumbs.db
 *.pem
 *.tmp
+*.bak
+*.swp
+*.swo
 
 # Debug Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.log
 
-# Local Environment & Secrets
+# Local Environment & Secrets (Strictly Excluded)
 .env
+.env.*
 .env*.local
 .env.production
 .env.development
+**/.env
+**/.env.*
+**/.env*.local
+backend/.env
+frontend/.env.local
+
+# Preserve Safe Configuration Templates
+!.env.example
+!**/.env.example
+
+# Local Runtime Data & State (Contains session/user data, do NOT commit)
+data/*.json
+frontend/data/*.json
+**/data/
+frontend/data/
+**/codeatlas-db.json
+**/dev-mailbox.json
+**/auth-credentials.json
+**/auth-otps.json
+
+# Python Virtual Environments & Caches
+.venv/
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
 
 # Vercel
 .vercel

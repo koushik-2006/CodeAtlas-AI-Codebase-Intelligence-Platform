@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  quality-gate:
-    name: Verify CodeAtlas Quality & Security Gates
+  frontend-gate:
+    name: Frontend Quality & Security Gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -24,33 +24,73 @@ jobs:
         with:
           node-version: 20
           cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
 
       - name: Install Dependencies
+        working-directory: frontend
         run: npm ci
 
       - name: Run ESLint
+        working-directory: frontend
         run: npm run lint
 
       - name: Run TypeScript Type Check
+        working-directory: frontend
         run: npm run typecheck
 
       - name: Run Unit Tests
+        working-directory: frontend
         run: npm run test:unit
 
       - name: Run Integration Tests
+        working-directory: frontend
         run: npm run test:integration
 
       - name: Run Google Auth & Security Tests
+        working-directory: frontend
         run: npm run test:google-auth
 
       - name: Run Complete Auth System Tests
+        working-directory: frontend
         run: npm run test:auth-system
 
       - name: Run End-to-End User Journeys
+        working-directory: frontend
         run: npm run test:e2e
 
+      - name: Run Google Gemini AI Integration Tests
+        working-directory: frontend
+        run: npm run test:gemini
+
       - name: Build Production Application
+        working-directory: frontend
         run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
           NODE_ENV: production
+
+  backend-gate:
+    name: Backend API & Database Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install Python Dependencies
+        working-directory: backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Backend Pytest Suite
+        working-directory: backend
+        run: pytest

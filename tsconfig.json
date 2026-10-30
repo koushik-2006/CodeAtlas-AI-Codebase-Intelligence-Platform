@@ -16,26 +16,22 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
     "paths": {
       "@/*": [
-        "./*"
+        "./frontend/*"
       ]
     },
     "allowJs": true
   },
   "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
+    "frontend/**/*.ts",
+    "frontend/**/*.tsx",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "integrations"
+    "frontend/node_modules",
+    "frontend/out",
+    "frontend/pages_export_workspace"
   ]
 }
