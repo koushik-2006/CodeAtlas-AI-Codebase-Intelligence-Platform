@@ -77,7 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               } else {
                 const authUser = authService.mapFirebaseUser(firebaseUser);
                 setUser(authUser);
-                (authService as any).persistUser(authUser);
+                authService.persistUser(authUser);
                 try {
                   localStorage.removeItem("codeatlas_demo_active_user");
                   localStorage.removeItem("codeatlas_active_demo_session");

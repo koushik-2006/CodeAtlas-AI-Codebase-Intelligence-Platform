@@ -53,6 +53,13 @@ declare module "firebase/auth" {
     operationType: string;
   }
 
+  export interface AdditionalUserInfo {
+    username?: string | null;
+    isNewUser?: boolean;
+    profile?: Record<string, any> | null;
+    providerId?: string;
+  }
+
   export interface OAuthCredential {
     accessToken?: string;
     idToken?: string;
@@ -86,6 +93,8 @@ declare module "firebase/auth" {
 
   export function getAuth(app?: any): Auth;
   export function signInWithPopup(auth: Auth, provider: AuthProvider): Promise<UserCredential>;
+  export function linkWithPopup(user: User, provider: AuthProvider): Promise<UserCredential>;
+  export function getAdditionalUserInfo(userCredential: UserCredential): AdditionalUserInfo | null;
   export function signInWithEmailAndPassword(auth: Auth, email: string, password: string): Promise<UserCredential>;
   export function createUserWithEmailAndPassword(auth: Auth, email: string, password: string): Promise<UserCredential>;
   export function signOut(auth: Auth): Promise<void>;

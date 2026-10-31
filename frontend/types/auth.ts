@@ -28,6 +28,7 @@ export interface AuthUser {
   id: string;
   email: string;
   name: string;
+  username?: string;
   avatar?: string;
   role?: string;
   provider: "google" | "github" | "credentials" | "email" | "demo";

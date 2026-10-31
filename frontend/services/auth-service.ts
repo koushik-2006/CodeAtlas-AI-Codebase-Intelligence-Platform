@@ -12,6 +12,7 @@ import {
   sendPasswordResetEmail,
   signOut,
   updateProfile,
+  getAdditionalUserInfo,
   type User as FirebaseUser,
 } from "firebase/auth";
 import {
@@ -57,19 +58,39 @@ export class AuthService {
    */
   mapFirebaseUser(user: FirebaseUser, providerOverride?: string): AuthUser {
     let provider: "google" | "github" | "credentials" | "email" | "demo" = "email";
-    const pId = providerOverride || user.providerData[0]?.providerId || "";
+    const pId = providerOverride || user.providerData?.[0]?.providerId || "";
     if (pId.includes("google")) provider = "google";
     else if (pId.includes("github")) provider = "github";
     else provider = "email";
 
+    let username: string | undefined = undefined;
+    let avatar: string | undefined = user.photoURL || undefined;
+
+    if (provider === "github") {
+      try {
+        const cached = localStorage.getItem("codeatlas_github_profile");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed.username) username = parsed.username;
+          if (!avatar && parsed.avatar) avatar = parsed.avatar;
+        }
+      } catch {}
+      if (!avatar && username) {
+        avatar = `https://avatars.githubusercontent.com/${username}`;
+      }
+    }
+
+    const displayName = user.displayName || username || user.email?.split("@")[0] || "Developer";
+
     return {
       id: user.uid,
-      name: user.displayName || user.email?.split("@")[0] || "User",
+      name: displayName,
+      username,
       email: user.email || "",
-      avatar: user.photoURL || undefined,
+      avatar,
       role: "Software Engineer",
       provider,
-      createdAt: user.metadata.creationTime,
+      createdAt: user.metadata?.creationTime,
     };
   }
 
@@ -158,6 +179,14 @@ export class AuthService {
       provider.addScope("read:user");
       provider.addScope("user:email");
       const result = await signInWithPopup(auth, provider);
+      let githubUsername = "";
+      try {
+        const info = getAdditionalUserInfo(result);
+        if (info?.username) {
+          githubUsername = info.username;
+        }
+      } catch {}
+
       try {
         const credential = GithubAuthProvider.credentialFromResult(result);
         if (credential?.accessToken && typeof window !== "undefined") {
@@ -165,7 +194,21 @@ export class AuthService {
           sessionStorage.setItem("github_access_token", credential.accessToken);
         }
       } catch {}
+
+      const photo = result.user.photoURL || (githubUsername ? `https://avatars.githubusercontent.com/${githubUsername}` : undefined);
+
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(
+            "codeatlas_github_profile",
+            JSON.stringify({ username: githubUsername, avatar: photo })
+          );
+        } catch {}
+      }
+
       const user = this.mapFirebaseUser(result.user, "github");
+      if (githubUsername) user.username = githubUsername;
+      if (photo) user.avatar = photo;
       this.persistUser(user);
       if (typeof window !== "undefined") {
         try {

@@ -60,6 +60,9 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
   const [isDemo, setIsDemo] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
 
+  const isRealUser = Boolean(user && user.provider !== "demo" && user.id !== "demo-user");
+  const showDemoBanner = isDemo && !isRealUser && !bannerDismissed;
+
   useEffect(() => {
     setIsDemo(isDemoMode());
     try {
@@ -158,7 +161,7 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
             </span>
           </nav>
 
-          {isDemo && !bannerDismissed && (
+          {showDemoBanner && (
             <div className="hidden md:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-600 dark:text-amber-400 text-xs font-medium animate-in fade-in">
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
               <span>Demo mode — sample data, no backend</span>
@@ -298,14 +301,14 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
             onClick={() => setShowProfileMenu(!showProfileMenu)}
             aria-label="Open developer profile menu"
             aria-expanded={showProfileMenu}
-            className="grid h-10 w-10 place-items-center rounded-2xl bg-[#FFE08A] font-bold text-xs text-[#1E2022] shadow-sm hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] overflow-hidden"
+            className="grid h-10 w-10 place-items-center rounded-full bg-[#7C5CFC]/15 text-[#7C5CFC] font-bold text-xs shadow-sm hover:scale-105 transition-transform focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] overflow-hidden"
           >
             {user?.avatar ? (
               /* eslint-disable-next-line @next/next/no-img-element */
               <img
                 src={user.avatar}
                 alt={user.name || "User avatar"}
-                className="h-full w-full object-cover"
+                className="h-full w-full object-cover rounded-full"
                 referrerPolicy="no-referrer"
               />
             ) : (
@@ -318,7 +321,7 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
                       .map((p) => p[0])
                       .join("")
                       .toUpperCase()
-                  : "AM"}
+                  : "DV"}
               </span>
             )}
           </button>
@@ -330,19 +333,19 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
                 onClick={() => setShowProfileMenu(false)}
               />
               <div
-                className={`absolute right-0 mt-2 w-56 z-50 rounded-2xl border p-2 shadow-2xl animate-in fade-in slide-in-from-top-1 ${
+                className={`absolute right-0 mt-2 w-60 z-50 rounded-2xl border p-2.5 shadow-2xl animate-in fade-in slide-in-from-top-1 ${
                   isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white border-[#E8E5F4]"
                 }`}
               >
                 <div className="px-3 py-2 border-b border-[var(--border-color)]">
                   <p className="text-xs font-bold text-[var(--text-primary)] truncate">
-                    {user?.name || "Alex Mercer"}
+                    {user?.name || "Developer"}
                   </p>
                   <p className="text-[11px] text-[var(--text-secondary)] truncate">
-                    {user?.email || "alex@codeatlas.dev"}
+                    {user?.username ? `@${user.username}` : user?.email || "Signed in"}
                   </p>
-                  <span className="mt-1 inline-block text-[10px] font-mono font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded">
-                    {user?.role ? user.role.toUpperCase() : "AUTHENTICATED"}
+                  <span className="mt-1.5 inline-block text-[10px] font-mono font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded capitalize">
+                    {user?.provider || "authenticated"}
                   </span>
                 </div>
 
@@ -371,7 +374,7 @@ export default function AppHeader({ onMenuClick }: AppHeaderProps) {
                       try {
                         await logout();
                       } finally {
-                        router.push("/");
+                        router.replace("/login");
                       }
                     }}
                     className="flex w-full items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-red-500 hover:bg-red-500/10 transition-colors text-left"
