@@ -1,15 +1,20 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import Script from "next/script";
 import { useTheme } from "@/hooks/useTheme";
 import { authService } from "@/services/auth-service";
 import { isFirebaseConfigured } from "@/lib/firebase";
-import { GoogleCredentialResponse } from "@/types/auth";
-import { RotateCw, Loader2, AlertCircle } from "lucide-react";
+import { AlertCircle, RotateCw } from "lucide-react";
+
+interface GoogleCredentialResponse {
+  credential?: string;
+  select_by?: string;
+  clientId?: string;
+}
 
 interface GoogleSignInButtonProps {
-  onCredential?: (credential: string) => void;
+  onCredential?: (idToken: string) => void;
   onClick?: () => void;
   onError?: (error: string) => void;
   disabled?: boolean;
@@ -19,7 +24,7 @@ interface GoogleSignInButtonProps {
 
 function GoogleIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 24 24">
+    <svg className={className} viewBox="0 0 24 24" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -56,41 +61,7 @@ export function GoogleSignInButton({
   const [scriptLoaded, setScriptLoaded] = useState<boolean>(false);
   const [scriptError, setScriptError] = useState<string | null>(null);
 
-  // If Firebase is configured, render the client-side Firebase popup button
-  if (isFirebaseConfigured) {
-    return (
-      <div className={`w-full flex justify-center ${className}`}>
-        <button
-          type="button"
-          onClick={() => {
-            if (disabled || isLoading) return;
-            onClick?.();
-          }}
-          disabled={disabled || isLoading}
-          aria-label="Continue with Google"
-          className={`w-full max-w-[360px] h-[44px] rounded-full border px-4 flex items-center justify-center gap-3 text-sm font-semibold transition-all duration-150 select-none shadow-sm active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed ${
-            isDark
-              ? "bg-[#131314] border-[#8e918f] hover:bg-[#202124] text-[#e3e3e3]"
-              : "bg-white border-[#747775] hover:bg-[#f8fafd] text-[#1f1f1f]"
-          }`}
-        >
-          {isLoading ? (
-            <>
-              <RotateCw className="w-4 h-4 animate-spin text-[var(--primary)]" />
-              <span>Connecting to Google...</span>
-            </>
-          ) : (
-            <>
-              <GoogleIcon className="w-4 h-4 shrink-0" />
-              <span>Continue with Google</span>
-            </>
-          )}
-        </button>
-      </div>
-    );
-  }
-
-  // Fallback: Legacy Google Identity Services script rendering when Firebase is not configured
+  // Fallback credentials for legacy Google Identity Services
   const clientId =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
     authService.getClientId() ||
@@ -109,7 +80,7 @@ export function GoogleSignInButton({
   );
 
   const initializeGoogleSignIn = useCallback(() => {
-    if (typeof window === "undefined" || !window.google?.accounts?.id) {
+    if (isFirebaseConfigured || typeof window === "undefined" || !window.google?.accounts?.id) {
       return;
     }
 
@@ -144,14 +115,14 @@ export function GoogleSignInButton({
   }, [clientId, handleCredentialCallback, isDark]);
 
   useEffect(() => {
-    if (scriptLoaded || (typeof window !== "undefined" && window.google?.accounts?.id)) {
+    if (!isFirebaseConfigured && (scriptLoaded || (typeof window !== "undefined" && window.google?.accounts?.id))) {
       initializeGoogleSignIn();
     }
   }, [scriptLoaded, isDark, initializeGoogleSignIn]);
 
   useEffect(() => {
     return () => {
-      if (typeof window !== "undefined" && window.google?.accounts?.id) {
+      if (!isFirebaseConfigured && typeof window !== "undefined" && window.google?.accounts?.id) {
         try {
           window.google.accounts.id.cancel();
         } catch {}
@@ -159,6 +130,41 @@ export function GoogleSignInButton({
     };
   }, []);
 
+  // Primary Path: Firebase client-side auth button
+  if (isFirebaseConfigured) {
+    return (
+      <div className={`w-full flex justify-center ${className}`}>
+        <button
+          type="button"
+          onClick={() => {
+            if (disabled || isLoading) return;
+            onClick?.();
+          }}
+          disabled={disabled || isLoading}
+          aria-label="Continue with Google"
+          className={`w-full max-w-[360px] h-[44px] rounded-full border px-4 flex items-center justify-center gap-3 text-sm font-semibold transition-all duration-150 select-none shadow-sm active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50 disabled:cursor-not-allowed ${
+            isDark
+              ? "bg-[#131314] border-[#8e918f] hover:bg-[#202124] text-[#e3e3e3]"
+              : "bg-white border-[#747775] hover:bg-[#f8fafd] text-[#1f1f1f]"
+          }`}
+        >
+          {isLoading ? (
+            <>
+              <RotateCw className="w-4 h-4 animate-spin text-[var(--primary)]" />
+              <span>Connecting to Google...</span>
+            </>
+          ) : (
+            <>
+              <GoogleIcon className="w-4 h-4 shrink-0" />
+              <span>Continue with Google</span>
+            </>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  // Fallback: Legacy Google Identity Services script rendering
   return (
     <div className={`w-full flex flex-col items-center gap-3 ${className}`}>
       <Script

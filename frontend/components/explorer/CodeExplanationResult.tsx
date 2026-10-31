@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useTheme } from "@/hooks/useTheme";
-import { StandaloneExplanation } from "@/types/codelens";
 import {
   Sparkles,
   Copy,
@@ -14,26 +13,39 @@ import {
   Activity,
   CheckCircle2,
   Terminal,
+  RefreshCw,
+  Square,
 } from "lucide-react";
+import { MarkdownMessage } from "@/components/assistant/MarkdownMessage";
+import { MermaidFlowchart } from "./MermaidFlowchart";
 
 interface CodeExplanationResultProps {
-  result: StandaloneExplanation;
+  modeTitle?: string;
+  markdownText?: string;
+  mermaidChart?: string | null;
+  isLoading?: boolean;
+  error?: string | null;
   onReturnToEditor: () => void;
-  onTraceAcrossRepo?: () => void;
+  onRetry?: () => void;
+  onStop?: () => void;
 }
 
 export function CodeExplanationResult({
-  result,
+  modeTitle = "Code Intelligence Analysis",
+  markdownText = "",
+  mermaidChart = null,
+  isLoading = false,
+  error = null,
   onReturnToEditor,
-  onTraceAcrossRepo,
+  onRetry,
+  onStop,
 }: CodeExplanationResultProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [copied, setCopied] = useState(false);
 
   const handleCopyResult = () => {
-    const textToCopy = `=== CODEATLAS ANALYSIS: ${result.purpose} ===\n\nSUMMARY:\n${result.summary}\n\nALGORITHM LOGIC:\n${result.algorithmLogic}\n\nPOTENTIAL ISSUES:\n${result.potentialIssues.map((i) => `- ${i}`).join("\n")}\n\nCOMPLEXITY:\nTime: ${result.complexity.time}\nSpace: ${result.complexity.space}`;
-    navigator.clipboard.writeText(textToCopy);
+    navigator.clipboard.writeText(markdownText || mermaidChart || "");
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -41,9 +53,7 @@ export function CodeExplanationResult({
   return (
     <div
       className={`mt-6 rounded-3xl border overflow-hidden transition-all shadow-sm ${
-        isDark
-          ? "bg-[#0D1117] border-[#30363D]"
-          : "bg-white border-[#E8E5F4]"
+        isDark ? "bg-[#0D1117] border-[#30363D]" : "bg-white border-[#E8E5F4]"
       }`}
     >
       {/* Top Banner & Header */}
@@ -55,23 +65,39 @@ export function CodeExplanationResult({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-lg sm:text-xl font-extrabold text-[var(--text-primary)]">
-                Standalone Code Analysis
+                {modeTitle}
               </h3>
               <span className="font-mono text-[10px] uppercase font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2.5 py-0.5 rounded-full border border-[var(--primary)]/20">
-                Action A
+                {isLoading ? "Streaming Tokens..." : "Complete"}
               </span>
             </div>
-            <p className="text-xs text-[var(--text-secondary)] font-medium">
-              {result.purpose} · {result.language}
+            <p className="text-xs text-[var(--text-secondary)]">
+              Real-time analysis powered by Firebase AI Logic & Gemini Flash
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5">
+          {isLoading && onStop && (
+            <button
+              type="button"
+              onClick={onStop}
+              className="px-3 py-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 text-rose-500 font-bold text-xs flex items-center gap-1.5 hover:bg-rose-500/20 active:scale-95 transition-all"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+              <span>Stop</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleCopyResult}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--primary)] transition-colors"
+            disabled={!markdownText && !mermaidChart}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 ${
+              isDark
+                ? "bg-[#161B22] border-[#30363D] text-[#E6EDF3] hover:bg-[#202735]"
+                : "bg-white border-[#E8E5F4] text-[#1E2022] hover:bg-[#FAF9FF]"
+            }`}
           >
             {copied ? (
               <>
@@ -89,210 +115,76 @@ export function CodeExplanationResult({
           <button
             type="button"
             onClick={onReturnToEditor}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+            className="px-3.5 py-1.5 rounded-xl bg-[var(--primary)] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Return to Editor</span>
+            <span>Back to Editor</span>
           </button>
         </div>
       </div>
 
-      {/* Honest Prototype Label */}
-      {result.isSimulated && (
-        <div className="px-6 py-2.5 bg-amber-500/10 border-b border-amber-500/20 text-[11px] text-amber-700 dark:text-amber-400 font-medium flex items-center gap-2">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-          <span>
-            Demonstration Analysis: Generated by local deterministic AST parser. No live external AI model connected.
-          </span>
-        </div>
-      )}
-
-      {/* Main Analysis Body */}
-      <div className="p-6 sm:p-8 space-y-6">
-        {/* Short Summary */}
-        <div>
-          <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-2">
-            Executive Summary
-          </h4>
-          <p className="text-sm leading-relaxed text-[var(--text-primary)] font-medium">
-            {result.summary}
-          </p>
-        </div>
-
-        {/* Algorithm & Logic Explanation */}
-        <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-          <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-primary)] mb-2 flex items-center gap-1.5">
-            <Activity className="w-4 h-4 text-[var(--primary)]" />
-            Algorithm & Execution Logic
-          </h4>
-          <pre className="text-xs font-sans whitespace-pre-wrap leading-relaxed text-[var(--text-secondary)]">
-            {result.algorithmLogic}
-          </pre>
-        </div>
-
-        {/* Key Functions & Variables */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Important Functions */}
-          <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-3">
-              Important Functions
-            </h4>
-            <div className="space-y-3">
-              {result.keyFunctions.map((fn, idx) => (
-                <div key={idx} className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <code className="font-mono font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-1.5 py-0.5 rounded">
-                      {fn.name}
-                    </code>
-                    {fn.scope && (
-                      <span className="text-[10px] font-mono text-[var(--text-secondary)]">
-                        ({fn.scope})
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-[var(--text-secondary)] leading-relaxed">
-                    {fn.description}
-                  </p>
-                </div>
-              ))}
+      {/* Main Content Area */}
+      <div className="p-6 space-y-6">
+        {error && (
+          <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/25 space-y-3">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold text-sm text-rose-500">Analysis Error</span>
+                <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{error}</p>
+              </div>
             </div>
+            {onRetry && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="px-3.5 py-1.5 rounded-xl bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 hover:bg-rose-600 active:scale-95 transition-all"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Retry Analysis</span>
+                </button>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Important Variables */}
-          <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-3">
-              Key Variables & State
-            </h4>
-            <div className="space-y-3">
-              {result.keyVariables.map((v, idx) => (
-                <div key={idx} className="text-xs">
-                  <div className="flex items-center gap-2">
-                    <code className="font-mono font-bold text-[var(--text-primary)] bg-[var(--border-color)]/50 px-1.5 py-0.5 rounded">
-                      {v.name}
-                    </code>
-                    {v.type && (
-                      <span className="text-[10px] font-mono text-emerald-500">
-                        : {v.type}
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-[var(--text-secondary)] leading-relaxed">
-                    {v.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Line-by-Line Breakdown */}
-        {result.lineByLine && result.lineByLine.length > 0 && (
+        {/* Visual Flowchart (if generated) */}
+        {mermaidChart && (
           <div>
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-3">
-              Line-by-Line Breakdown
-            </h4>
-            <div className="rounded-2xl border border-[var(--border-color)] overflow-hidden font-mono text-xs">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-[var(--border-color)] bg-[var(--bg-page)] text-[var(--text-secondary)] text-left">
-                    <th className="py-2 px-3 w-12 text-center">Line</th>
-                    <th className="py-2 px-3 w-1/2">Source Statement</th>
-                    <th className="py-2 px-3">Explanation</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border-color)]">
-                  {result.lineByLine.map((row) => (
-                    <tr
-                      key={row.line}
-                      className="hover:bg-[var(--border-color)]/10 transition-colors"
-                    >
-                      <td className="py-2 px-3 text-center text-[var(--text-secondary)] font-bold">
-                        {row.line}
-                      </td>
-                      <td className="py-2 px-3 text-[var(--text-primary)] whitespace-pre overflow-x-auto max-w-xs">
-                        <code>{row.text}</code>
-                      </td>
-                      <td className="py-2 px-3 text-[var(--text-secondary)] font-sans">
-                        {row.explanation}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <MermaidFlowchart chart={mermaidChart} isDark={isDark} />
           </div>
         )}
 
-        {/* Complexity & Edge Cases */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {/* Complexity */}
-          <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-2">
-              Complexity Profile
-            </h4>
-            <div className="space-y-1.5 text-xs">
-              <p>
-                <strong className="text-[var(--text-primary)]">Time Complexity:</strong>{" "}
-                <span className="font-mono text-[var(--primary)]">{result.complexity.time}</span>
-              </p>
-              <p>
-                <strong className="text-[var(--text-primary)]">Space Complexity:</strong>{" "}
-                <span className="font-mono text-[var(--primary)]">{result.complexity.space}</span>
-              </p>
-              {result.complexity.notes && (
-                <p className="text-[11px] text-[var(--text-secondary)] pt-1">
-                  {result.complexity.notes}
+        {/* Streaming / Rendered Markdown Content */}
+        {markdownText ? (
+          <div
+            className={`p-6 rounded-2xl border ${
+              isDark ? "bg-[#0A0F19] border-[#242B39]" : "bg-[#FAF9FF] border-[#E8E5F4]"
+            }`}
+          >
+            <MarkdownMessage content={markdownText} />
+            {isLoading && (
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-[var(--border-color)] text-xs font-mono text-[var(--primary)]">
+                <span className="inline-block w-2 h-2 rounded-full bg-[var(--primary)] animate-ping" />
+                <span>Gemini is generating response...</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          isLoading && (
+            <div className="py-16 flex flex-col items-center justify-center text-center gap-3">
+              <RefreshCw className="w-8 h-8 animate-spin text-[var(--primary)]" />
+              <div className="space-y-1">
+                <p className="font-bold text-sm text-[var(--text-primary)]">
+                  Analyzing code structure and reasoning...
                 </p>
-              )}
+                <p className="text-xs text-[var(--text-secondary)] font-mono">
+                  Streaming tokens will appear in real time below
+                </p>
+              </div>
             </div>
-          </div>
-
-          {/* Potential Issues & Edge Cases */}
-          <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-amber-500 mb-2 flex items-center gap-1">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Potential Issues & Edge Cases
-            </h4>
-            <ul className="list-disc pl-4 text-xs space-y-1 text-[var(--text-secondary)]">
-              {result.potentialIssues.map((issue, idx) => (
-                <li key={idx}>{issue}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Optional Example Output */}
-        {result.exampleOutput && (
-          <div className="p-4 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)]">
-            <h4 className="text-xs font-mono uppercase tracking-wider font-bold text-[var(--text-secondary)] mb-2 flex items-center gap-1.5">
-              <Terminal className="w-3.5 h-3.5 text-emerald-500" />
-              Derived Example Output
-            </h4>
-            <pre className="p-3 rounded-xl bg-black/40 text-emerald-400 font-mono text-xs overflow-x-auto">
-              {result.exampleOutput}
-            </pre>
-          </div>
-        )}
-
-        {/* Bottom Action Footer */}
-        {onTraceAcrossRepo && (
-          <div className="pt-4 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4">
-            <p className="text-xs text-[var(--text-secondary)] font-medium">
-              Want to see where this fits in your codebase?
-            </p>
-            <button
-              type="button"
-              onClick={onTraceAcrossRepo}
-              className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all flex items-center gap-2 ${
-                isDark
-                  ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
-                  : "bg-[#19143D] text-white hover:bg-[#2a225f]"
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Trace Across Repository Workflow &rarr;</span>
-            </button>
-          </div>
+          )
         )}
       </div>
     </div>

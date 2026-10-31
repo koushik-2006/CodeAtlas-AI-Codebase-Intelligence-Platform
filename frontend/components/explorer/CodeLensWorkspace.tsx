@@ -10,19 +10,8 @@ import { CameraCapture } from "./CameraCapture";
 import { ExtractedCodeEditor } from "./ExtractedCodeEditor";
 import { AnalysisModeButtons } from "./AnalysisModeButtons";
 import { CodeExplanationResult } from "./CodeExplanationResult";
-import { WorkflowTrace } from "./WorkflowTrace";
-import { codeExplanationService } from "@/services/code-explanation-service";
-import { repositoryMatchingService } from "@/services/repository-matching-service";
-import { codeExtractionService } from "@/services/code-extraction-service";
-import { StandaloneExplanation, WorkflowTraceData } from "@/types/codelens";
-import {
-  Sparkles,
-  GitBranch,
-  AlertTriangle,
-  ArrowRight,
-  FolderGit2,
-  CheckCircle2,
-} from "lucide-react";
+import { aiService, CodeAnalysisMode } from "@/services/ai-service";
+import { CheckCircle2, Sparkles } from "lucide-react";
 
 const SAMPLE_SNIPPETS = {
   auth: `// src/services/auth.ts
@@ -80,13 +69,20 @@ export function CodeLensWorkspace() {
   // Analysis target repo
   const [selectedRepo, setSelectedRepo] = useState<string>("sample-project");
 
-  // Analysis execution states
+  // Active analysis results
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analyzingMessage, setAnalyzingMessage] = useState("");
-  const [standaloneResult, setStandaloneResult] = useState<StandaloneExplanation | null>(null);
-  const [workflowTraceResult, setWorkflowTraceResult] = useState<WorkflowTraceData | null>(null);
-  const [unmatchedError, setUnmatchedError] = useState<string | null>(null);
-  const [repoRequiredError, setRepoRequiredError] = useState<boolean>(false);
+  const [activeAnalysisMode, setActiveAnalysisMode] = useState<string | null>(null);
+  const [activeModeTitle, setActiveModeTitle] = useState<string>("Code Intelligence");
+  const [analysisMarkdown, setAnalysisMarkdown] = useState<string>("");
+  const [mermaidChart, setMermaidChart] = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [lastAnalysisConfig, setLastAnalysisConfig] = useState<{
+    mode: CodeAnalysisMode | "flowchart";
+    targetLang?: string;
+  } | null>(null);
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
 
   // Stop camera tracks cleanly
   const stopCamera = () => {
@@ -141,25 +137,31 @@ export function CodeLensWorkspace() {
     }
   };
 
-  // Accept snapshot and extract code
+  // Accept snapshot and extract code with Gemini Multimodal
   const acceptCapturedSnapshot = async () => {
     if (!capturedSnapshot) return;
     setIsExtractingImage(true);
+    setCameraError(null);
+
     try {
-      const ocrResult = await codeExtractionService.extractFromSnapshot(capturedSnapshot);
-      setCode(ocrResult.code);
-      if (ocrResult.languageDetected) {
-        setLanguage(ocrResult.languageDetected.toLowerCase());
-      }
-      setConfidence(ocrResult.confidence || 0.95);
+      // Convert DataURL to Blob and then File
+      const res = await fetch(capturedSnapshot);
+      const blob = await res.blob();
+      const file = new File([blob], "camera-capture.png", { type: "image/png" });
+
+      const extracted = await aiService.explainImage(file);
+      setCode(extracted.code);
+      if (extracted.language) setLanguage(extracted.language.toLowerCase());
+      setConfidence(extracted.confidence || 0.95);
     } catch (err: any) {
-      setCameraError(err.message || "Failed to extract code from snapshot.");
+      const errInfo = aiService.classifyError(err);
+      setCameraError(errInfo.userMessage);
     } finally {
       setIsExtractingImage(false);
     }
   };
 
-  // File upload handler
+  // File upload handler with Gemini Multimodal Extraction
   const handleFileUpload = async (file?: File) => {
     if (!file) return;
     setUploadError(null);
@@ -182,14 +184,13 @@ export function CodeLensWorkspace() {
       setIsExtractingImage(true);
 
       try {
-        const ocrResult = await codeExtractionService.extractFromImage(file);
-        setCode(ocrResult.code);
-        if (ocrResult.languageDetected) {
-          setLanguage(ocrResult.languageDetected.toLowerCase());
-        }
-        setConfidence(ocrResult.confidence || 0.96);
+        const extracted = await aiService.explainImage(file);
+        setCode(extracted.code);
+        if (extracted.language) setLanguage(extracted.language.toLowerCase());
+        setConfidence(extracted.confidence || 0.96);
       } catch (err: any) {
-        setUploadError(err.message || "Failed to extract code from screenshot.");
+        const errInfo = aiService.classifyError(err);
+        setUploadError(errInfo.userMessage);
       } finally {
         setIsExtractingImage(false);
       }
@@ -197,74 +198,105 @@ export function CodeLensWorkspace() {
     reader.readAsDataURL(file);
   };
 
-  // Remove previewed image
   const handleRemoveImage = () => {
     setPreviewImage(null);
     setConfidence(undefined);
   };
 
-  // Action A: Explain This Code (Standalone)
-  const handleExplainCode = async () => {
+  const handleStopAnalysis = () => {
+    abortControllerRef.current?.abort();
+    setIsAnalyzing(false);
+  };
+
+  // Run one of the 7 analysis modes
+  const handleRunAnalysis = async (modeName: CodeAnalysisMode, targetLanguage?: string) => {
     if (!code.trim() || isAnalyzing) return;
 
-    // Reset previous results
-    setWorkflowTraceResult(null);
-    setUnmatchedError(null);
-    setRepoRequiredError(false);
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setLastAnalysisConfig({ mode: modeName, targetLang: targetLanguage });
+    setActiveAnalysisMode(modeName);
     setIsAnalyzing(true);
-    setAnalyzingMessage("Analyzing syntax tree, token signatures, and complexity profile...");
+    setAnalysisError(null);
+    setMermaidChart(null);
+    setAnalysisMarkdown("");
+
+    const titles: Record<CodeAnalysisMode, string> = {
+      explain: "Simple Explanation",
+      "line-by-line": "Line-by-Line Walkthrough",
+      "find-bugs": "Bug & Security Audit",
+      optimize: "Performance & Complexity Optimization",
+      "add-comments": "Annotated Code Comments",
+      convert: `Code Conversion to ${targetLanguage || "Target"}`,
+      "generate-tests": "Unit Test Suite",
+    };
+
+    setActiveModeTitle(titles[modeName] || "Code Intelligence");
+
+    // Scroll to results area smoothly
+    setTimeout(() => {
+      resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
 
     try {
-      const result = await codeExplanationService.explainSnippet(code, language);
-      setStandaloneResult(result);
-    } catch (e: any) {
-      console.error(e);
+      await aiService.explainCode({
+        code,
+        language,
+        mode: modeName,
+        targetLanguage,
+        onChunk: (accumulated) => {
+          setAnalysisMarkdown(accumulated);
+        },
+        signal: controller.signal,
+      });
+    } catch (err: any) {
+      if (err?.name === "AbortError" || controller.signal.aborted) {
+        return;
+      }
+      const errInfo = aiService.classifyError(err);
+      setAnalysisError(errInfo.userMessage);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
-  // Action B: Explain Complete Workflow (Repository-grounded)
-  const handleExplainWorkflow = async () => {
+  // Generate Mermaid Visual Flowchart
+  const handleGenerateFlowchart = async () => {
     if (!code.trim() || isAnalyzing) return;
 
-    if (!selectedRepo || selectedRepo === "none") {
-      setRepoRequiredError(true);
-      setWorkflowTraceResult(null);
-      setStandaloneResult(null);
-      setUnmatchedError(null);
-      return;
-    }
-
-    setRepoRequiredError(false);
-    setStandaloneResult(null);
-    setUnmatchedError(null);
+    abortControllerRef.current?.abort();
+    setActiveAnalysisMode("flowchart");
+    setActiveModeTitle("Visual Control Flow");
     setIsAnalyzing(true);
-    setAnalyzingMessage(
-      `Searching repository '${selectedRepo}' for matching AST tokens and call references...`
-    );
+    setAnalysisError(null);
+    setMermaidChart(null);
+    setAnalysisMarkdown("");
+    setLastAnalysisConfig({ mode: "flowchart" });
+
+    // Scroll to results
+    setTimeout(() => {
+      resultSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
 
     try {
-      const matchResult = await repositoryMatchingService.matchAndTraceWorkflow(code, selectedRepo);
-
-      if (matchResult.matched && matchResult.trace) {
-        setWorkflowTraceResult(matchResult.trace);
-        setUnmatchedError(null);
-      } else {
-        // Honest fallback when not matched!
-        setWorkflowTraceResult(null);
-        setUnmatchedError(
-          matchResult.unmatchedReason ||
-            "We couldn't verify a matching location in this repository. Here is a standalone explanation of the submitted code instead."
-        );
-        // Automatically provide standalone fallback as mandated!
-        const fallback = await codeExplanationService.explainSnippet(code, language);
-        setStandaloneResult(fallback);
-      }
-    } catch (e: any) {
-      console.error(e);
+      const diagram = await aiService.generateMermaidFlowchart(code, language);
+      setMermaidChart(diagram);
+    } catch (err: any) {
+      const errInfo = aiService.classifyError(err);
+      setAnalysisError(errInfo.userMessage);
     } finally {
       setIsAnalyzing(false);
+    }
+  };
+
+  const handleRetryLastAnalysis = () => {
+    if (!lastAnalysisConfig) return;
+    if (lastAnalysisConfig.mode === "flowchart") {
+      handleGenerateFlowchart();
+    } else {
+      handleRunAnalysis(lastAnalysisConfig.mode, lastAnalysisConfig.targetLang);
     }
   };
 
@@ -344,7 +376,7 @@ export function CodeLensWorkspace() {
           <div className="p-4 border-t border-[var(--border-color)] bg-[var(--bg-page)]/50 flex items-center justify-between text-xs text-[var(--text-secondary)]">
             <span className="flex items-center gap-1.5 font-medium">
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-              OCR Engine: AST Token Reconstructor
+              OCR Engine: Firebase AI Gemini Multimodal
             </span>
             <span className="font-mono text-[11px]">
               {code.split("\n").length} lines in buffer
@@ -352,7 +384,7 @@ export function CodeLensWorkspace() {
           </div>
         </div>
 
-        {/* Right Panel: Extracted Code Editor + Two Action Buttons */}
+        {/* Right Panel: Extracted Code Editor + Analysis Modes */}
         <div
           className={`app-card overflow-hidden flex flex-col justify-between ${
             isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white border-[#E8E5F4]"
@@ -375,84 +407,31 @@ export function CodeLensWorkspace() {
             disabled={!code.trim() || isAnalyzing}
             selectedRepo={selectedRepo}
             onRepoChange={setSelectedRepo}
-            onExplainCode={handleExplainCode}
-            onExplainWorkflow={handleExplainWorkflow}
+            onRunAnalysis={handleRunAnalysis}
+            onGenerateFlowchart={handleGenerateFlowchart}
+            activeMode={activeAnalysisMode}
+            isAnalyzing={isAnalyzing}
           />
         </div>
       </div>
 
-      {/* Loading Progress State */}
-      {isAnalyzing && (
-        <div className="mt-6 app-card p-6 flex items-center gap-3 text-sm font-semibold border-l-4 border-l-[var(--primary)]">
-          <div className="h-5 w-5 border-2 border-[var(--primary)] border-t-transparent rounded-full animate-spin shrink-0" />
-          <span className="text-[var(--text-primary)]">{analyzingMessage}</span>
-        </div>
-      )}
-
-      {/* Repository Required Prompt State */}
-      {repoRequiredError && (
-        <div className="mt-6 p-6 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FolderGit2 className="w-6 h-6 text-amber-500 shrink-0" />
-            <div>
-              <h4 className="text-sm font-bold text-[var(--text-primary)]">
-                Repository Selection Required
-              </h4>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Workflow tracing requires a target codebase to search for symbol references. Please select &apos;sample-project&apos; or connect a repository.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedRepo("sample-project");
-                setRepoRequiredError(false);
-              }}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--primary)] text-white hover:opacity-90"
-            >
-              Select sample-project
-            </button>
-            <Link
-              href="/repositories"
-              className="px-4 py-2 rounded-xl text-xs font-bold border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            >
-              Connect Repository...
-            </Link>
-          </div>
-        </div>
-      )}
-
-      {/* Honest Unmatched Location Notice */}
-      {unmatchedError && (
-        <div className="mt-6 p-5 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-start gap-3 text-xs leading-relaxed text-[var(--text-primary)]">
-          <AlertTriangle className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
-          <div>
-            <strong className="font-bold text-blue-500 block mb-0.5">
-              Codebase Evidence Transparency:
-            </strong>
-            {unmatchedError}
-          </div>
-        </div>
-      )}
-
-      {/* Result A: Standalone Code Explanation Result */}
-      {standaloneResult && (
-        <CodeExplanationResult
-          result={standaloneResult}
-          onReturnToEditor={() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-          onTraceAcrossRepo={handleExplainWorkflow}
-        />
-      )}
-
-      {/* Result B: End-to-End Workflow Trace Result */}
-      {workflowTraceResult && (
-        <WorkflowTrace trace={workflowTraceResult} />
-      )}
+      {/* Analysis Output Section */}
+      <div ref={resultSectionRef}>
+        {(isAnalyzing || analysisMarkdown || mermaidChart || analysisError) && (
+          <CodeExplanationResult
+            modeTitle={activeModeTitle}
+            markdownText={analysisMarkdown}
+            mermaidChart={mermaidChart}
+            isLoading={isAnalyzing}
+            error={analysisError}
+            onReturnToEditor={() => {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }}
+            onRetry={handleRetryLastAnalysis}
+            onStop={handleStopAnalysis}
+          />
+        )}
+      </div>
     </div>
   );
 }

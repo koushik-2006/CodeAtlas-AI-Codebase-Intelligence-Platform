@@ -13,6 +13,7 @@ import {
   User,
   AlertTriangle,
   ExternalLink,
+  RotateCcw,
 } from "lucide-react";
 import { AssistantMessage, CitationReference } from "@/types/assistant";
 import { MarkdownMessage } from "./MarkdownMessage";
@@ -21,9 +22,15 @@ interface ChatMessageProps {
   message: AssistantMessage;
   repositoryId?: string;
   onRetry?: () => void;
+  onRegenerate?: () => void;
 }
 
-export function ChatMessage({ message, repositoryId = "sample-project", onRetry }: ChatMessageProps) {
+export function ChatMessage({
+  message,
+  repositoryId = "sample-project",
+  onRetry,
+  onRegenerate,
+}: ChatMessageProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const [copied, setCopied] = useState(false);
@@ -48,7 +55,7 @@ export function ChatMessage({ message, repositoryId = "sample-project", onRetry 
           : "bg-white text-[#19143D] border border-[#E8E5F4] mr-4 shadow-xs"
       }`}
     >
-      {/* Header bar: Sender identity + Timestamp + Copy */}
+      {/* Header bar: Sender identity + Timestamp + Actions */}
       <div className="font-semibold mb-2 flex items-center justify-between text-[11px]">
         <div className="flex items-center gap-2">
           {isUser ? (
@@ -73,10 +80,23 @@ export function ChatMessage({ message, repositoryId = "sample-project", onRetry 
             <span className="text-[9px] font-mono uppercase font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded">
               Grounded
             </span>
+
+            {onRegenerate && !message.isError && (
+              <button
+                type="button"
+                onClick={onRegenerate}
+                className="flex items-center gap-1 text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                title="Regenerate this response"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Regenerate</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1 text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="flex items-center gap-1 text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
               title="Copy message"
             >
               {copied ? (

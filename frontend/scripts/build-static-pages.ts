@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 
 /**
  * CodeAtlas GitHub Pages Static Export Generator
@@ -10,7 +11,8 @@ import * as path from "path";
  */
 
 const rootDir = process.cwd();
-const tempWorkspace = path.join(rootDir, "pages_export_workspace");
+// Use OS temp directory to completely eliminate Windows OneDrive sync locking
+const tempWorkspace = path.join(os.tmpdir(), "codeatlas_pages_export");
 const outDir = path.join(rootDir, "out");
 
 console.log("=========================================================================");
@@ -48,6 +50,20 @@ try {
   console.log("📁 Creating clean export workspace...");
   fs.mkdirSync(tempWorkspace, { recursive: true });
 
+  const preDirs = [
+    path.join(tempWorkspace, ".next"),
+    path.join(tempWorkspace, ".next", "cache"),
+    path.join(tempWorkspace, ".next", "server"),
+    path.join(tempWorkspace, ".next", "server", "app"),
+    path.join(tempWorkspace, ".next", "static"),
+    path.join(tempWorkspace, ".next", "static", "chunks"),
+    path.join(tempWorkspace, ".next", "types"),
+    path.join(tempWorkspace, ".next", "types", "app"),
+  ];
+  for (const dir of preDirs) {
+    try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  }
+
   // 1. Copy config and env files
   const filesToCopy = [
     "package.json",
@@ -66,6 +82,17 @@ try {
     }
   }
 
+  const targetNodeModules = path.join(rootDir, "node_modules");
+  const normalizedNodeModules = targetNodeModules.replace(/\\/g, "/");
+
+  // Adjust tsconfig.json in temp workspace so paths resolve to actual node_modules directory
+  const tempTsConfigPath = path.join(tempWorkspace, "tsconfig.json");
+  if (fs.existsSync(tempTsConfigPath)) {
+    const rawTsConfig = fs.readFileSync(tempTsConfigPath, "utf-8");
+    const updatedTsConfig = rawTsConfig.replace(/"\.\/node_modules/g, `"${normalizedNodeModules}`);
+    fs.writeFileSync(tempTsConfigPath, updatedTsConfig);
+  }
+
   // 2. Write dedicated static export next.config.mjs
   const defaultRepo = "koushik-2006/CodeAtlas-AI-Codebase-Intelligence-Platform";
   const repoEnv = process.env.GITHUB_REPOSITORY || process.env.GITHUB_PAGES_REPO || defaultRepo;
@@ -82,9 +109,36 @@ const nextConfig = {
   },
   trailingSlash: true,
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   experimental: {
     cpus: 1,
     workerThreads: false,
+  },
+  webpack: (config) => {
+    config.cache = false;
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "firebase/auth": "${normalizedNodeModules}/firebase/auth",
+      "firebase/app-check": "${normalizedNodeModules}/firebase/app-check",
+      "firebase/ai": "${normalizedNodeModules}/firebase/ai",
+      "firebase/app": "${normalizedNodeModules}/firebase/app",
+      "firebase": "${normalizedNodeModules}/firebase",
+      "@firebase/auth": "${normalizedNodeModules}/@firebase/auth",
+      "@firebase/app": "${normalizedNodeModules}/@firebase/app",
+      "@firebase/app-check": "${normalizedNodeModules}/@firebase/app-check",
+      "@firebase/ai": "${normalizedNodeModules}/@firebase/ai",
+      "@firebase/util": "${normalizedNodeModules}/@firebase/util",
+      "@firebase/component": "${normalizedNodeModules}/@firebase/component",
+      "@firebase/logger": "${normalizedNodeModules}/@firebase/logger",
+    };
+    config.resolve.modules = [
+      "${normalizedNodeModules}",
+      "node_modules",
+      ...(config.resolve.modules || []),
+    ];
+    return config;
   },
 };
 
@@ -93,17 +147,16 @@ export default nextConfig;
   fs.writeFileSync(path.join(tempWorkspace, "next.config.mjs"), staticNextConfig.trim());
 
   // 3. Link node_modules via junction on Windows or symlink on POSIX
-  const targetNodeModules = path.join(rootDir, "node_modules");
   const linkNodeModules = path.join(tempWorkspace, "node_modules");
   try {
     const symlinkType = process.platform === "win32" ? "junction" : "dir";
     fs.symlinkSync(targetNodeModules, linkNodeModules, symlinkType);
-  } catch (err: any) {
+  } catch {
     try {
       const relTarget = path.relative(tempWorkspace, targetNodeModules);
       fs.symlinkSync(relTarget, linkNodeModules, process.platform === "win32" ? "junction" : "dir");
     } catch {
-      console.warn("Notice: Direct node_modules symlink unavailable; relying on Node parent module resolution.");
+      console.warn("Notice: Direct node_modules symlink unavailable; relying on Webpack aliases.");
     }
   }
 
@@ -124,28 +177,33 @@ export default nextConfig;
     copyRecursiveSync(path.join(rootDir, d), path.join(tempWorkspace, d));
   }
 
-  // 5. Copy app directory EXCLUDING app/api
+  // 5. Copy app pages and layouts, strictly skipping /api routes
   console.log("📦 Copying page routes (excluding runtime server APIs)...");
-  copyRecursiveSync(path.join(rootDir, "app"), path.join(tempWorkspace, "app"), (relPath) => {
-    const normalized = relPath.replace(/\\/g, "/");
-    return normalized === "app/api" || normalized.startsWith("app/api/");
-  });
+  copyRecursiveSync(
+    path.join(rootDir, "app"),
+    path.join(tempWorkspace, "app"),
+    (relPath) => {
+      const normalized = relPath.replace(/\\/g, "/");
+      // Skip app/api entirely for client static export
+      if (normalized === "app/api" || normalized.startsWith("app/api/")) {
+        return true;
+      }
+      return false;
+    }
+  );
 
-  // 5b. Harden layout.tsx for air-gapped/offline and sandbox static export
+  // 5b. Prune dynamic server runtime imports from root layout for clean static rendering
   const tempLayoutPath = path.join(tempWorkspace, "app", "layout.tsx");
   if (fs.existsSync(tempLayoutPath)) {
     let layoutContent = fs.readFileSync(tempLayoutPath, "utf-8");
     layoutContent = layoutContent.replace(
-      /import\s*\{\s*Inter,\s*JetBrains_Mono\s*\}\s*from\s*["']next\/font\/google["'];?/,
-      '// next/font/google replaced with CSS font declarations for static export resilience'
+      /import\s+type\s*\{\s*Metadata\s*\}\s*from\s*["']next["'];?/g,
+      'import type { Metadata } from "next";\nexport const dynamic = "force-static";\nexport const revalidate = false;'
     );
+    // Replace network-dependent next/font/google with self-contained fallback font classes
     layoutContent = layoutContent.replace(
-      /const inter = Inter\([\s\S]*?\);/,
-      'const inter = { variable: "font-display" };'
-    );
-    layoutContent = layoutContent.replace(
-      /const jetbrainsMono = JetBrains_Mono\([\s\S]*?\);/,
-      'const jetbrainsMono = { variable: "font-mono" };'
+      /import\s*\{\s*Inter,\s*JetBrains_Mono\s*\}\s*from\s*["']next\/font\/google["'];?/g,
+      'const Inter = (_opts?: any) => ({ variable: "font-sans", className: "font-sans" });\nconst JetBrains_Mono = (_opts?: any) => ({ variable: "font-mono", className: "font-mono" });'
     );
     fs.writeFileSync(tempLayoutPath, layoutContent, "utf-8");
   }
@@ -161,6 +219,7 @@ export default nextConfig;
     shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
     env: {
       ...process.env,
+      NODE_PATH: targetNodeModules,
       STATIC_EXPORT: "true",
       NEXT_PUBLIC_DEMO_MODE: "true",
       NEXT_PUBLIC_APP_URL: "https://koushik-2006.github.io/CodeAtlas-AI-Codebase-Intelligence-Platform",
@@ -205,9 +264,7 @@ export default nextConfig;
       try { fs.unlinkSync(linkNodeModules); } catch {}
     }
     if (fs.existsSync(tempWorkspace)) {
-      fs.rmSync(tempWorkspace, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+      fs.rmSync(tempWorkspace, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
     }
-  } catch {
-    // Ignore cleanup error
-  }
+  } catch {}
 }

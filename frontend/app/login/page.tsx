@@ -602,7 +602,7 @@ function LoginFormContent() {
 
               <div className="text-center pt-2">
                 <p className="text-xs text-[var(--text-secondary)]">
-                  Don't have an account?{" "}
+                  Don&apos;t have an account?{" "}
                   <button
                     type="button"
                     onClick={() => {
@@ -808,7 +808,7 @@ function LoginFormContent() {
                     ) : (
                       <CheckCircle2 className="w-4 h-4" />
                     )}
-                    <span>I've verified, continue</span>
+                    <span>I&apos;ve verified, continue</span>
                   </button>
 
                   <div className="flex items-center justify-between gap-3 pt-2">

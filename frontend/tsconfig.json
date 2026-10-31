@@ -24,6 +24,18 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "firebase/ai": [
+        "./node_modules/@firebase/ai/dist/ai-public.d.ts"
+      ],
+      "firebase/app-check": [
+        "./node_modules/@firebase/app-check/dist/app-check-public.d.ts"
+      ],
+      "firebase/auth": [
+        "./node_modules/@firebase/auth/dist/auth-public.d.ts"
+      ],
+      "firebase/app": [
+        "./node_modules/@firebase/app/dist/app-public.d.ts"
       ]
     },
     "allowJs": true
@@ -36,6 +48,8 @@
   ],
   "exclude": [
     "node_modules",
-    "integrations"
+    "integrations",
+    "pages_export_workspace",
+    "out"
   ]
 }
