@@ -16,6 +16,8 @@ node_modules/
 out/
 frontend/out/
 .pages_export_temp/
+.pages_export_workspace/
+frontend/.pages_export_workspace/
 pages_export_workspace/
 frontend/pages_export_workspace/
 /.api_server_backup/

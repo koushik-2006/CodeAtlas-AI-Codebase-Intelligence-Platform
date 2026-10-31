@@ -11,8 +11,10 @@ import * as os from "os";
  */
 
 const rootDir = process.cwd();
-// Use OS temp directory to completely eliminate Windows OneDrive sync locking
-const tempWorkspace = path.join(os.tmpdir(), "codeatlas_pages_export");
+// Use RUNNER_TEMP in CI, or local .pages_export_workspace in workspace
+const tempWorkspace = process.env.RUNNER_TEMP
+  ? path.join(process.env.RUNNER_TEMP, "codeatlas_pages_export")
+  : path.join(rootDir, ".pages_export_workspace");
 const outDir = path.join(rootDir, "out");
 
 console.log("=========================================================================");
@@ -55,8 +57,21 @@ try {
     path.join(tempWorkspace, ".next", "cache"),
     path.join(tempWorkspace, ".next", "server"),
     path.join(tempWorkspace, ".next", "server", "app"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)", "onboarding"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)", "dashboard"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)", "settings"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)", "assistant"),
+    path.join(tempWorkspace, ".next", "server", "app", "(app)", "explorer"),
     path.join(tempWorkspace, ".next", "static"),
     path.join(tempWorkspace, ".next", "static", "chunks"),
+    path.join(tempWorkspace, ".next", "static", "chunks", "app"),
+    path.join(tempWorkspace, ".next", "static", "chunks", "app", "(app)"),
+    path.join(tempWorkspace, ".next", "static", "chunks", "pages"),
+    path.join(tempWorkspace, ".next", "static", "media"),
+    path.join(tempWorkspace, ".next", "static", "css"),
+    path.join(tempWorkspace, ".next", "server", "chunks"),
+    path.join(tempWorkspace, ".next", "server", "pages"),
     path.join(tempWorkspace, ".next", "types"),
     path.join(tempWorkspace, ".next", "types", "app"),
   ];
@@ -67,6 +82,7 @@ try {
   // 1. Copy config and env files
   const filesToCopy = [
     "package.json",
+    "package-lock.json",
     "tsconfig.json",
     "tailwind.config.ts",
     "postcss.config.mjs",
@@ -84,6 +100,9 @@ try {
 
   const targetNodeModules = path.join(rootDir, "node_modules");
   const normalizedNodeModules = targetNodeModules.replace(/\\/g, "/");
+  const firebaseAuthPath = fs.existsSync(path.join(rootDir, "node_modules", "@firebase", "auth"))
+    ? `${normalizedNodeModules}/@firebase/auth`
+    : `${normalizedNodeModules}/firebase/node_modules/@firebase/auth`;
 
   // Adjust tsconfig.json in temp workspace so paths resolve to actual node_modules directory
   const tempTsConfigPath = path.join(tempWorkspace, "tsconfig.json");
@@ -125,7 +144,7 @@ const nextConfig = {
       "firebase/ai": "${normalizedNodeModules}/firebase/ai",
       "firebase/app": "${normalizedNodeModules}/firebase/app",
       "firebase": "${normalizedNodeModules}/firebase",
-      "@firebase/auth": "${normalizedNodeModules}/@firebase/auth",
+      "@firebase/auth": "${firebaseAuthPath}",
       "@firebase/app": "${normalizedNodeModules}/@firebase/app",
       "@firebase/app-check": "${normalizedNodeModules}/@firebase/app-check",
       "@firebase/ai": "${normalizedNodeModules}/@firebase/ai",
@@ -210,8 +229,13 @@ export default nextConfig;
 
   // 6. Run Next.js static build using local binary
   console.log("⚙️  Running Next.js static export build (STATIC_EXPORT=true)...");
+  const localNextCli = path.join(rootDir, "node_modules", "next", "dist", "bin", "next");
   const localNextBin = path.join(rootDir, "node_modules", ".bin", process.platform === "win32" ? "next.cmd" : "next");
-  const buildCmd = fs.existsSync(localNextBin) ? `"${localNextBin}" build` : "npx next build";
+  const buildCmd = fs.existsSync(localNextCli)
+    ? `"${process.execPath}" "${localNextCli}" build`
+    : fs.existsSync(localNextBin)
+    ? `"${localNextBin}" build`
+    : "npx next build";
 
   execSync(buildCmd, {
     cwd: tempWorkspace,

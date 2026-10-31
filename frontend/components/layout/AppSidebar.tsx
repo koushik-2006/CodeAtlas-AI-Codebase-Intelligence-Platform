@@ -213,6 +213,11 @@ export default function AppSidebar({
             </Link>
           </div>
         )}
+        {process.env.NEXT_PUBLIC_BUILD_SHA && (
+          <div className="mt-2 text-center text-[10px] font-mono text-[var(--text-secondary)] opacity-60 truncate px-1">
+            Build {process.env.NEXT_PUBLIC_BUILD_SHA.slice(0, 7)}
+          </div>
+        )}
       </div>
     </div>
   );

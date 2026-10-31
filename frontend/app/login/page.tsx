@@ -1016,7 +1016,14 @@ function LoginFormContent() {
 
         {/* Footer */}
         <div className="pt-6 border-t border-[var(--border-color)] flex items-center justify-between text-xs text-[var(--text-secondary)]">
-          <p>© {new Date().getFullYear()} CodeAtlas Intelligence</p>
+          <div>
+            <p>© {new Date().getFullYear()} CodeAtlas Intelligence</p>
+            {process.env.NEXT_PUBLIC_BUILD_SHA && (
+              <span className="text-[10px] font-mono opacity-50 block mt-1">
+                Build {process.env.NEXT_PUBLIC_BUILD_SHA.slice(0, 7)}
+              </span>
+            )}
+          </div>
           <div className="flex gap-4">
             <Link href="/privacy" className="hover:underline">
               Privacy
