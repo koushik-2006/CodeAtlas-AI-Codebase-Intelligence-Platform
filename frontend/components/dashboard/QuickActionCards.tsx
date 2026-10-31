@@ -10,7 +10,6 @@ import {
   Network,
   GitCompare,
   GitPullRequest,
-  FolderGit2,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -27,142 +26,114 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
     {
       step: "01 — INGEST",
       title: "Connect Repository",
-      desc: "Connect a repository to index files, AST symbols, and call relationships.",
+      desc: "Index code repositories, extract AST symbols, and parse cross-file call relationships.",
       icon: Github,
-      badgeColor: isDark ? "bg-[#29D3C2]/15 text-[#29D3C2]" : "bg-[#EAE5FF] text-[#6C4DFF]",
-      iconColor: isDark ? "text-[#29D3C2]" : "text-[#1E2022]",
+      tint: "bg-[#7C5CFC]/10 text-[#7C5CFC] border-[#7C5CFC]/20",
       buttonText: "Connect Repo",
       onClick: onConnectGitHub,
       href: "/repositories",
-      isPrimaryAction: true,
     },
     {
       step: "02 — CODELENS",
-      title: "Explain Code Snippet",
-      desc: "Paste code, upload a screenshot, or extract snippets via camera OCR.",
+      title: "Visual Code Explorer",
+      desc: "Paste code snippets, upload screenshots, or extract source code via OCR.",
       icon: ScanSearch,
-      badgeColor: isDark ? "bg-[#8B7CFF]/15 text-[#8B7CFF]" : "bg-[#FFE0BF] text-[#E07A00]",
-      iconColor: isDark ? "text-[#8B7CFF]" : "text-[#6C4DFF]",
+      tint: "bg-blue-500/10 text-blue-500 border-blue-500/20",
       buttonText: "Open CodeLens",
       href: "/visual-explorer",
     },
     {
       step: "03 — GROUNDED AI",
       title: "Ask AI Assistant",
-      desc: "Query the codebase and receive answers grounded in verifiable AST code citations.",
+      desc: "Query the codebase and receive verified answers with clickable file and line citations.",
       icon: Sparkles,
-      badgeColor: isDark ? "bg-[#2FD6A0]/15 text-[#2FD6A0]" : "bg-[#D7F7EA] text-[#1BA97B]",
-      iconColor: isDark ? "text-[#2FD6A0]" : "text-[#1BA97B]",
+      tint: "bg-purple-500/10 text-purple-500 border-purple-500/20",
       buttonText: "Ask Question",
       href: `/assistant?repoId=${activeRepoId}&q=${encodeURIComponent("How does authentication work?")}`,
     },
     {
       step: "04 — TOPOLOGY",
       title: "Explore Architecture",
-      desc: "Visualize multi-tier dependency call graphs, API endpoints, and service components.",
+      desc: "Visualize multi-tier dependency graphs, entrypoint callers, and external service contracts.",
       icon: Network,
-      badgeColor: isDark ? "bg-cyan-500/15 text-cyan-400" : "bg-cyan-50 text-cyan-700",
-      iconColor: isDark ? "text-cyan-400" : "text-cyan-600",
+      tint: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
       buttonText: "View City Graph",
       href: `/architecture?repoId=${activeRepoId}`,
     },
     {
       step: "05 — BLAST RADIUS",
       title: "Analyze Change Impact",
-      desc: "Evaluate upstream callers and downstream APIs before pushing code commits.",
+      desc: "Calculate upstream dependencies and downstream breakages before deploying changes.",
       icon: GitCompare,
-      badgeColor: isDark ? "bg-amber-500/15 text-amber-400" : "bg-amber-50 text-amber-700",
-      iconColor: isDark ? "text-amber-400" : "text-amber-600",
+      tint: "bg-amber-500/10 text-amber-500 border-amber-500/20",
       buttonText: "Analyze Impact",
       href: `/change-impact?repoId=${activeRepoId}`,
     },
     {
       step: "06 — PR AUDIT",
       title: "Review Pull Request",
-      desc: "Inspect git diffs, detect logic bugs and security flaws, and map test gaps.",
+      desc: "Automate code reviews, detect security flaws, and identify untested logic branches.",
       icon: GitPullRequest,
-      badgeColor: isDark ? "bg-rose-500/15 text-rose-400" : "bg-rose-50 text-rose-700",
-      iconColor: isDark ? "text-rose-400" : "text-rose-600",
+      tint: "bg-rose-500/10 text-rose-500 border-rose-500/20",
       buttonText: "Review PR #101",
       href: `/code-review?repoId=${activeRepoId}&pr=101`,
     },
   ];
 
   return (
-    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
       {ACTIONS.map((card) => {
         const Icon = card.icon;
         return (
-          <div key={card.step} className="h-full">
-            <motion.div
-              whileHover={{ y: -4 }}
-              transition={{ duration: 0.2 }}
-              className={`h-full flex flex-col justify-between rounded-3xl p-6 transition-all duration-200 border ${
-                isDark
-                  ? "bg-[#0D111B] border-[#242B39] hover:border-[#29D3C2]/50 hover:shadow-[0_0_20px_-5px_rgba(41,211,194,0.15)]"
-                  : "bg-white border-[#E8E5F4] shadow-sm hover:shadow-soft"
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className={`font-mono text-[11px] font-bold px-2.5 py-1 rounded-md ${card.badgeColor}`}>
-                    {card.step}
-                  </span>
-                  <div
-                    className={`p-2 rounded-xl ${
-                      isDark ? "bg-[#0D1117]" : "bg-[#FAF9FF]"
-                    } ${card.iconColor}`}
-                  >
-                    <Icon className="w-5 h-5" />
-                  </div>
+          <motion.div
+            key={card.step}
+            whileHover={{ y: -3 }}
+            transition={{ duration: 0.2 }}
+            className={`flex flex-col justify-between rounded-2xl p-5 sm:p-6 transition-all duration-200 border h-full min-h-[200px] ${
+              isDark
+                ? "bg-[#0D111B] border-[#242B39] hover:border-[#7C5CFC]/50 hover:shadow-[0_0_25px_-5px_rgba(124,92,252,0.18)]"
+                : "bg-white border-[#E8E5F4] shadow-sm hover:border-[#7C5CFC]/40 hover:shadow-[0_4px_20px_-4px_rgba(124,92,252,0.12)]"
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3.5">
+                <div className={`w-11 h-11 rounded-xl flex items-center justify-center border ${card.tint}`}>
+                  <Icon className="w-5 h-5" />
                 </div>
-
-                <h3 className="mt-4 text-lg font-bold tracking-tight text-[var(--text-primary)]">
-                  {card.title}
-                </h3>
-                <p className="mt-2 text-xs sm:text-sm font-medium text-[var(--text-secondary)] leading-relaxed">
-                  {card.desc}
-                </p>
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-[var(--border-color)] flex items-center justify-between">
-                <span className="text-[11px] font-mono text-[var(--text-secondary)]">
-                  {card.href.startsWith("/assistant")
-                    ? "Grounded AST"
-                    : card.href.startsWith("/code-review")
-                    ? "PR Intelligence"
-                    : "Zero-Trust"}
+                <span className="font-mono text-[10px] font-bold text-[var(--text-secondary)] tracking-wider">
+                  {card.step}
                 </span>
-
-                {card.onClick ? (
-                  <button
-                    type="button"
-                    onClick={card.onClick}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                      isDark
-                        ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
-                        : "bg-[#1E2022] text-white hover:bg-[#2e3135]"
-                    }`}
-                  >
-                    {card.buttonText}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <Link
-                    href={card.href}
-                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                      isDark
-                        ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
-                        : "bg-[#6C4DFF] text-white hover:bg-[#5838e6]"
-                    }`}
-                  >
-                    {card.buttonText}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                )}
               </div>
-            </motion.div>
-          </div>
+
+              <h3 className="text-base font-bold text-[var(--text-primary)] tracking-tight">
+                {card.title}
+              </h3>
+              <p className="mt-1 text-xs text-[var(--text-secondary)] leading-relaxed">
+                {card.desc}
+              </p>
+            </div>
+
+            <div className="mt-5 flex justify-end pt-2 border-t border-[var(--border-color)]/60">
+              {card.onClick ? (
+                <button
+                  type="button"
+                  onClick={card.onClick}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1 py-0.5"
+                >
+                  <span>{card.buttonText}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <Link
+                  href={card.href}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1 py-0.5"
+                >
+                  <span>{card.buttonText}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              )}
+            </div>
+          </motion.div>
         );
       })}
     </div>

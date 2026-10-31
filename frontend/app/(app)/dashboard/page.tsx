@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { WelcomeSection } from "@/components/dashboard/WelcomeSection";
+import { DashboardKPIRow } from "@/components/dashboard/DashboardKPIRow";
 import { CodebaseMetricsBar } from "@/components/dashboard/CodebaseMetricsBar";
 import { QuickActionCards } from "@/components/dashboard/QuickActionCards";
 import { RepositoryOverview } from "@/components/dashboard/RepositoryOverview";
-import { GitHubStatusCard } from "@/components/dashboard/GitHubStatusCard";
 import { GettingStartedChecklist } from "@/components/dashboard/GettingStartedChecklist";
 import { RecentActivityPanel } from "@/components/dashboard/RecentActivityPanel";
 import { AddRepositoryDialog } from "@/components/repositories/AddRepositoryDialog";
 import { useRepositories } from "@/hooks/useRepositories";
 import { CheckCircle2, AlertCircle, X } from "lucide-react";
+import { motion } from "framer-motion";
 
 export default function DashboardPage() {
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
@@ -37,7 +38,7 @@ export default function DashboardPage() {
       } else if (error) {
         setOauthNotice({
           type: "error",
-          text: `GitHub authorization error: ${decodeURIComponent(error)}`,
+          text: `GitHub authorization notice: ${decodeURIComponent(error)}`,
         });
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -62,12 +63,17 @@ export default function DashboardPage() {
 
     setOauthNotice({
       type: "success",
-      text: `Repository "${name}" queued for indexing! Parsing AST symbols and extracting call-graph connections in background.`,
+      text: `Repository "${name}" queued for indexing! Parsing AST symbols and extracting call-graph connections.`,
     });
   };
 
   return (
-    <div className="space-y-8">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-7"
+    >
       {/* OAuth Feedback Notice */}
       {oauthNotice && (
         <div
@@ -97,28 +103,28 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 1. Welcome Section */}
+      {/* 1. Header: Greeting, Avatar, Date, Subtitle, Add Repo & Ask AI */}
       <WelcomeSection onAddRepository={() => setIsAddRepoOpen(true)} />
 
-      {/* 2. Codebase Intelligence & Language Distribution Bar */}
+      {/* 2. KPI Row: Repositories, Files indexed, AST symbols, Open findings */}
+      <DashboardKPIRow />
+
+      {/* 3. Language & Architecture Bar with Tooltips & Percentages */}
       <CodebaseMetricsBar />
 
-      {/* 3. Quick Action Cards (6 functional workflows) */}
+      {/* 4. Quick Actions Grid (6 cards, consistent height, tinted square icon, bottom-right button) */}
       <QuickActionCards
         onConnectGitHub={() => setIsAddRepoOpen(true)}
         activeRepoId={activeRepoId}
       />
 
-      {/* 4. Two-Column Workspace: GitHub Integration & Your Repositories */}
+      {/* 5. Two-Column Workspace: Left Recent Repositories, Right Getting Started Checklist */}
       <div className="grid gap-6 lg:grid-cols-2 items-start">
-        <GitHubStatusCard onBrowseRepositories={() => setIsAddRepoOpen(true)} />
         <RepositoryOverview onAddRepository={() => setIsAddRepoOpen(true)} />
+        <GettingStartedChecklist />
       </div>
 
-      {/* 5. Getting Started Checklist */}
-      <GettingStartedChecklist />
-
-      {/* 6. Recent Activity Panel */}
+      {/* 6. Recent Activity Timeline Panel */}
       <RecentActivityPanel />
 
       {/* Add Repository Modal */}
@@ -127,7 +133,6 @@ export default function DashboardPage() {
         onClose={() => setIsAddRepoOpen(false)}
         onAdd={handleAddRepo}
       />
-    </div>
+    </motion.div>
   );
 }
-

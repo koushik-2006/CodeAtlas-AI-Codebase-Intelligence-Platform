@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Github } from "@/components/Icons";
-import { ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Mail, Globe } from "lucide-react";
+import { ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Mail, Globe, FolderGit2 } from "lucide-react";
 import { apiClient } from "@/services/api-client";
 import { authService } from "@/services/auth-service";
-import { isFirebaseConfigured } from "@/lib/firebase";
+import { isFirebaseConfigured, getFirebaseAuth } from "@/lib/firebase";
+import { GithubAuthProvider, linkWithPopup, getAdditionalUserInfo } from "firebase/auth";
 
 interface AccountStatus {
   connected: boolean;
@@ -32,6 +33,7 @@ export function ConnectedAccounts() {
     connectedAt: null,
     isConfigured: true,
   });
+  const [repoCount, setRepoCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
@@ -44,16 +46,53 @@ export function ConnectedAccounts() {
           sessionStorage.getItem("codeatlas_github_token") ||
           sessionStorage.getItem("github_access_token");
 
+        let cachedUsername = user?.username;
+        let cachedAvatar = user?.avatar;
+        try {
+          const profile = localStorage.getItem("codeatlas_github_profile");
+          if (profile) {
+            const parsed = JSON.parse(profile);
+            if (parsed.username) cachedUsername = parsed.username;
+            if (parsed.avatar) cachedAvatar = parsed.avatar;
+          }
+        } catch {}
+
         if (ghToken || user?.provider === "github") {
           setGithubStatus({
             connected: true,
-            username: user?.name || "GitHub User",
-            avatar: user?.avatar || null,
+            username: cachedUsername || user?.name || "GitHub User",
+            avatar: cachedAvatar || null,
             scopes: ["read:user", "user:email", "repo"],
             connectedAt: "Active Session",
             isConfigured: true,
             isSandbox: false,
           });
+
+          // Fetch real GitHub repos count with token
+          if (ghToken) {
+            fetch("https://api.github.com/user/repos?per_page=1", {
+              headers: {
+                Authorization: `Bearer ${ghToken}`,
+                Accept: "application/vnd.github.v3+json",
+              },
+            })
+              .then((res) => {
+                const link = res.headers.get("link");
+                if (link) {
+                  const match = link.match(/page=(\d+)>; rel="last"/);
+                  if (match) {
+                    setRepoCount(parseInt(match[1], 10));
+                    return;
+                  }
+                }
+                return res.json().then((data) => {
+                  if (Array.isArray(data)) setRepoCount(data.length);
+                });
+              })
+              .catch(() => {});
+          }
+
+          setLoading(false);
           return;
         }
       }
@@ -108,18 +147,42 @@ export function ConnectedAccounts() {
 
     if (isFirebaseConfigured) {
       try {
-        const res = await authService.loginWithGitHub();
-        if (res.success && res.user) {
-          setNotice({
-            type: "success",
-            text: "GitHub account authorized successfully! Read-only metadata permissions granted.",
-          });
-          await fetchStatus();
-        } else {
-          setNotice({
-            type: "error",
-            text: res.error || "GitHub authorization was not completed.",
-          });
+        const auth = getFirebaseAuth();
+        if (auth && auth.currentUser) {
+          try {
+            const provider = new GithubAuthProvider();
+            provider.addScope("read:user");
+            provider.addScope("user:email");
+            const result = await linkWithPopup(auth.currentUser, provider);
+            const cred = GithubAuthProvider.credentialFromResult(result);
+            if (cred?.accessToken && typeof window !== "undefined") {
+              sessionStorage.setItem("codeatlas_github_token", cred.accessToken);
+              sessionStorage.setItem("github_access_token", cred.accessToken);
+            }
+            const info = getAdditionalUserInfo(result);
+            const login = info?.username || result.user.displayName || "";
+            const avatar = result.user.photoURL || (login ? `https://avatars.githubusercontent.com/${login}` : undefined);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("codeatlas_github_profile", JSON.stringify({ username: login, avatar }));
+            }
+            setNotice({
+              type: "success",
+              text: `GitHub connected as @${login}! Read-only repository metadata granted.`,
+            });
+            await fetchStatus();
+            return;
+          } catch (linkErr: any) {
+            // If already linked or requires sign-in, use direct loginWithGitHub
+            const res = await authService.loginWithGitHub();
+            if (res.success && res.user) {
+              setNotice({
+                type: "success",
+                text: "GitHub account authorized successfully! Read-only metadata permissions granted.",
+              });
+              await fetchStatus();
+              return;
+            }
+          }
         }
       } catch (err: any) {
         setNotice({
@@ -142,10 +205,11 @@ export function ConnectedAccounts() {
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("codeatlas_github_token");
         sessionStorage.removeItem("github_access_token");
+        localStorage.removeItem("codeatlas_github_profile");
       }
       try {
         await apiClient.post<any>("/api/auth/github/disconnect");
-      } catch {}
+      } catch { }
 
       setGithubStatus({
         connected: false,
@@ -155,6 +219,7 @@ export function ConnectedAccounts() {
         connectedAt: null,
         isConfigured: githubStatus.isConfigured,
       });
+      setRepoCount(null);
       setNotice({
         type: "info",
         text: "GitHub disconnected safely. Authorization tokens have been removed.",
@@ -172,9 +237,8 @@ export function ConnectedAccounts() {
 
   return (
     <section
-      className={`app-card p-6 sm:p-8 ${
-        isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white"
-      }`}
+      className={`app-card p-6 sm:p-8 ${isDark ? "bg-[#0D111B] border-[#242B39]" : "bg-white"
+        }`}
     >
       <div className="flex items-center justify-between pb-4 border-b border-[var(--border-color)]">
         <div className="flex items-center gap-2.5">
@@ -193,13 +257,12 @@ export function ConnectedAccounts() {
 
       {notice && (
         <div
-          className={`mt-4 p-3.5 rounded-xl flex items-center gap-2.5 text-xs font-medium border ${
-            notice.type === "success"
+          className={`mt-4 p-3.5 rounded-xl flex items-center gap-2.5 text-xs font-medium border ${notice.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-500"
               : notice.type === "error"
-              ? "bg-red-500/10 border-red-500/20 text-red-500"
-              : "bg-blue-500/10 border-blue-500/20 text-blue-500"
-          }`}
+                ? "bg-red-500/10 border-red-500/20 text-red-500"
+                : "bg-blue-500/10 border-blue-500/20 text-blue-500"
+            }`}
         >
           {notice.type === "success" ? (
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -247,10 +310,10 @@ export function ConnectedAccounts() {
                 {provider === "google"
                   ? "Google Authentication"
                   : provider === "github"
-                  ? "GitHub Authentication"
-                  : isGuest
-                  ? "Interactive Live Demo Session"
-                  : "Email & Password Authentication"}
+                    ? "GitHub Authentication"
+                    : isGuest
+                      ? "Interactive Live Demo Session"
+                      : "Email & Password Authentication"}
               </h3>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                 Primary Identity
@@ -270,30 +333,41 @@ export function ConnectedAccounts() {
       {/* GitHub Integration Section */}
       <div className="mt-4 p-5 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center border border-[var(--border-color)] shrink-0">
-            <Github className="w-6 h-6" />
-          </div>
+          {githubStatus.avatar ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={githubStatus.avatar}
+              alt="GitHub avatar"
+              referrerPolicy="no-referrer"
+              className="w-11 h-11 rounded-xl object-cover border border-[var(--border-color)] shrink-0"
+            />
+          ) : (
+            <div className="w-11 h-11 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center border border-[var(--border-color)] shrink-0">
+              <Github className="w-6 h-6" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-bold text-sm">GitHub Authorization</h3>
               {githubStatus.connected && (
                 <span
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-                    githubStatus.isSandbox
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${githubStatus.isSandbox
                       ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
                       : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
-                  }`}
+                    }`}
                 >
-                  {githubStatus.isSandbox ? "Developer Sandbox" : "Authorized"}
+                  {githubStatus.isSandbox ? "Developer Sandbox" : "Connected"}
                 </span>
               )}
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">
               {githubStatus.connected
-                ? `Connected as @${githubStatus.username}. Scopes: ${githubStatus.scopes.join(", ") || "read:user, repo"}. Repository intelligence enabled.`
+                ? `Connected as @${githubStatus.username}. Scopes: ${githubStatus.scopes.join(", ") || "read:user, repo"}.${
+                    repoCount !== null ? ` ${repoCount} repositories accessible for intelligence.` : ""
+                  }`
                 : githubStatus.isConfigured
-                ? "Authorize GitHub to discover, import, and index your public or authorized private repositories."
-                : "Configure GitHub OAuth to enable live repository synchronization."}
+                  ? "Authorize GitHub to discover, import, and index your public or authorized private repositories."
+                  : "Configure GitHub OAuth to enable live repository synchronization."}
             </p>
           </div>
         </div>
@@ -311,11 +385,10 @@ export function ConnectedAccounts() {
             <button
               onClick={handleConnect}
               disabled={actionLoading}
-              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all shadow-sm ${
-                isDark
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-all shadow-sm ${isDark
                   ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8] border-[#29D3C2]"
                   : "bg-[#19143D] text-white hover:bg-[#2a225f] border-[#19143D]"
-              }`}
+                }`}
             >
               Connect GitHub
             </button>

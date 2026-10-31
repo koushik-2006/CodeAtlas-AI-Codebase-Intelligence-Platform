@@ -154,7 +154,7 @@ export class AuthService {
           localStorage.setItem("codeatlas_active_session_type", "firebase");
           localStorage.removeItem("codeatlas_demo_active_user");
           localStorage.removeItem("codeatlas_active_demo_session");
-        } catch {}
+        } catch { }
       }
       return { success: true, user };
     } catch (err: any) {
@@ -193,7 +193,7 @@ export class AuthService {
           sessionStorage.setItem("codeatlas_github_token", credential.accessToken);
           sessionStorage.setItem("github_access_token", credential.accessToken);
         }
-      } catch {}
+      } catch { }
 
       const photo = result.user.photoURL || (githubUsername ? `https://avatars.githubusercontent.com/${githubUsername}` : undefined);
 
@@ -215,7 +215,7 @@ export class AuthService {
           localStorage.setItem("codeatlas_active_session_type", "firebase");
           localStorage.removeItem("codeatlas_demo_active_user");
           localStorage.removeItem("codeatlas_active_demo_session");
-        } catch {}
+        } catch { }
       }
       return { success: true, user };
     } catch (err: any) {
@@ -240,7 +240,7 @@ export class AuthService {
       if (name.trim()) {
         try {
           await updateProfile(result.user, { displayName: name.trim() });
-        } catch {}
+        } catch { }
       }
       await sendEmailVerification(result.user);
       return {
@@ -280,7 +280,7 @@ export class AuthService {
           localStorage.setItem("codeatlas_active_session_type", "firebase");
           localStorage.removeItem("codeatlas_demo_active_user");
           localStorage.removeItem("codeatlas_active_demo_session");
-        } catch {}
+        } catch { }
       }
       return { success: true, user };
     } catch (err: any) {
@@ -348,7 +348,7 @@ export class AuthService {
             localStorage.setItem("codeatlas_active_session_type", "firebase");
             localStorage.removeItem("codeatlas_demo_active_user");
             localStorage.removeItem("codeatlas_active_demo_session");
-          } catch {}
+          } catch { }
         }
         return { verified: true, user };
       }
@@ -469,7 +469,7 @@ export class AuthService {
 
             localStorage.setItem("codeatlas_access_token", authData.access_token);
 
-          } catch {}
+          } catch { }
 
         }
 
@@ -513,7 +513,7 @@ export class AuthService {
           if (fallbackData?.error) {
             return { success: false, error: fallbackData.error };
           }
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -546,7 +546,7 @@ export class AuthService {
             };
           }
         }
-      } catch {}
+      } catch { }
     }
 
     if (isFirebaseConfigured && typeof window !== "undefined") {
@@ -580,7 +580,7 @@ export class AuthService {
           if (localStorage.getItem("codeatlas_demo_active_user") === "logged_out") {
             return { authenticated: false, user: null };
           }
-        } catch {}
+        } catch { }
       }
       return {
         authenticated: true,
@@ -652,8 +652,8 @@ export class AuthService {
               provider: nextData.auth?.github?.connected
                 ? "github"
                 : nextData.auth?.google?.connected
-                ? "google"
-                : "credentials",
+                  ? "google"
+                  : "credentials",
             };
             this.persistUser(user);
             return {
@@ -680,7 +680,7 @@ export class AuthService {
 
         localStorage.removeItem("codeatlas_access_token");
 
-      } catch {}
+      } catch { }
 
     }
 
@@ -721,7 +721,7 @@ export class AuthService {
 
             localStorage.setItem("codeatlas_access_token", res.data.access_token);
 
-          } catch {}
+          } catch { }
 
         }
 
@@ -779,7 +779,7 @@ export class AuthService {
           if (fallbackData?.error) {
             return fallbackData;
           }
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -822,7 +822,7 @@ export class AuthService {
 
             localStorage.setItem("codeatlas_access_token", res.data.access_token);
 
-          } catch {}
+          } catch { }
 
         }
 
@@ -870,7 +870,7 @@ export class AuthService {
           if (registerData) {
             return registerData;
           }
-        } catch {}
+        } catch { }
       }
 
       return {
@@ -1062,7 +1062,7 @@ export class AuthService {
       if (auth) {
         try {
           await signOut(auth);
-        } catch {}
+        } catch { }
       }
     }
 
@@ -1076,20 +1076,20 @@ export class AuthService {
         localStorage.removeItem("codeatlas_access_token");
         sessionStorage.removeItem("codeatlas_github_token");
         sessionStorage.removeItem("github_access_token");
-      } catch {}
+      } catch { }
 
       if (window.google?.accounts?.id?.disableAutoSelect) {
         try {
           window.google.accounts.id.disableAutoSelect();
-        } catch {}
+        } catch { }
       }
     }
 
     if (!isFirebaseConfigured) {
       try {
-        await apiClient.post("/auth/logout").catch(() => {});
-        await apiClient.delete("/auth/session").catch(() => {});
-      } catch {}
+        await apiClient.post("/auth/logout").catch(() => { });
+        await apiClient.delete("/auth/session").catch(() => { });
+      } catch { }
     }
   }
 
@@ -1153,7 +1153,7 @@ export class AuthService {
 
       localStorage.setItem(STORAGE_KEYS.AUTH_SESSION, "active");
 
-    } catch {}
+    } catch { }
 
   }
 
