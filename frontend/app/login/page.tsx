@@ -109,9 +109,9 @@ function LoginFormContent() {
   const completeAuthSuccess = () => {
     const target =
       redirectTarget &&
-      redirectTarget.startsWith("/") &&
-      !redirectTarget.startsWith("//") &&
-      !redirectTarget.includes(":")
+        redirectTarget.startsWith("/") &&
+        !redirectTarget.startsWith("//") &&
+        !redirectTarget.includes(":")
         ? redirectTarget
         : "/dashboard";
     router.replace(target);
@@ -513,7 +513,7 @@ function LoginFormContent() {
                   disabled={isSubmitting}
                   isLoading={isSubmitting}
                   onClick={handleGoogleSignInClick}
-                  onCredential={() => {}}
+                  onCredential={() => { }}
                   onError={(err) => setErrorMessage(err)}
                 />
 
@@ -633,7 +633,7 @@ function LoginFormContent() {
                   disabled={isSubmitting}
                   isLoading={isSubmitting}
                   onClick={handleGoogleSignInClick}
-                  onCredential={() => {}}
+                  onCredential={() => { }}
                   onError={(err) => setErrorMessage(err)}
                 />
 

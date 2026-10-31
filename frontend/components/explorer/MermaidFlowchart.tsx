@@ -178,3 +178,4 @@ export function MermaidFlowchart({ chart, isDark = false }: MermaidFlowchartProp
     </div>
   );
 }
+
