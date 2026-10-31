@@ -30,7 +30,7 @@ export interface AuthUser {
   name: string;
   avatar?: string;
   role?: string;
-  provider: "google" | "github" | "credentials" | "demo";
+  provider: "google" | "github" | "credentials" | "email" | "demo";
   createdAt?: string;
 }
 
@@ -38,7 +38,7 @@ export interface AuthSession {
   authenticated: boolean;
   user: AuthUser | null;
   expiresAt?: string;
-  provider?: "google" | "github" | "credentials" | "demo";
+  provider?: "google" | "github" | "credentials" | "email" | "demo";
 }
 
 export interface GoogleAuthRequest {

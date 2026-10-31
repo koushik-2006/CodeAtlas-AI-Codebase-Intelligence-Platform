@@ -1,6 +1,7 @@
 "use client";
-import { isDemoMode } from "@/lib/demo/mock-api";
 
+import { isDemoMode } from "@/lib/demo/mock-api";
+import { isFirebaseConfigured } from "@/lib/firebase";
 import React, { useState } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import { Github } from "@/components/Icons";
@@ -29,12 +30,12 @@ export function GitHubSignInButton({
     e.preventDefault();
     if (disabled || isLoading || internalLoading) return;
 
-    if (isDemoMode()) {
+    if (onClick) {
+      onClick();
       return;
     }
 
-    if (onClick) {
-      onClick();
+    if (isDemoMode() && !isFirebaseConfigured) {
       return;
     }
 

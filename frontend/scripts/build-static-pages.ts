@@ -48,12 +48,15 @@ try {
   console.log("📁 Creating clean export workspace...");
   fs.mkdirSync(tempWorkspace, { recursive: true });
 
-  // 1. Copy config files
+  // 1. Copy config and env files
   const filesToCopy = [
     "package.json",
     "tsconfig.json",
     "tailwind.config.ts",
     "postcss.config.mjs",
+    ".env.local",
+    ".env.production",
+    ".env",
   ];
 
   for (const f of filesToCopy) {

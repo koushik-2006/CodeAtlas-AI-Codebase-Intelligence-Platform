@@ -1,32 +1,31 @@
 import { isDemoMode, DEMO_USER } from "@/lib/demo/mock-api";
 import { apiClient } from "@/services/api-client";
-
 import { STORAGE_KEYS } from "@/lib/constants";
-
+import { isFirebaseConfigured, getFirebaseAuth } from "@/lib/firebase";
 import {
-
+  GoogleAuthProvider,
+  GithubAuthProvider,
+  signInWithPopup,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signOut,
+  updateProfile,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import {
   AuthUser,
-
   AuthSession,
-
   GoogleAuthResponse,
-
   GoogleDecodedToken,
-
   LoginCredentials,
-
   RegisterCredentials,
-
   VerifyOtpRequest,
-
   ResendOtpRequest,
-
   ForgotPasswordRequest,
-
   ResetPasswordRequest,
-
   EmailAuthResponse,
-
 } from "@/types/auth";
 
 
@@ -54,7 +53,272 @@ export class AuthService {
 
 
   /**
+   * Maps a client-side Firebase User instance to the canonical CodeAtlas AuthUser type.
+   */
+  mapFirebaseUser(user: FirebaseUser, providerOverride?: string): AuthUser {
+    let provider: "google" | "github" | "credentials" | "email" | "demo" = "email";
+    const pId = providerOverride || user.providerData[0]?.providerId || "";
+    if (pId.includes("google")) provider = "google";
+    else if (pId.includes("github")) provider = "github";
+    else provider = "email";
 
+    return {
+      id: user.uid,
+      name: user.displayName || user.email?.split("@")[0] || "User",
+      email: user.email || "",
+      avatar: user.photoURL || undefined,
+      role: "Software Engineer",
+      provider,
+      createdAt: user.metadata.creationTime,
+    };
+  }
+
+  /**
+   * Translates Firebase Auth error codes into friendly, actionable user messages.
+   */
+  formatFirebaseAuthError(err: any): string {
+    const code = err?.code || "";
+    switch (code) {
+      case "auth/popup-blocked":
+        return "Popup was blocked by your browser. Please allow popups for this site and try again.";
+      case "auth/popup-closed-by-user":
+        return "Sign-in popup was closed before completing authentication.";
+      case "auth/cancelled-popup-request":
+        return "Only one sign-in window can be open at a time.";
+      case "auth/unauthorized-domain":
+        return "This domain is not authorized for OAuth. Please check Firebase domain configuration.";
+      case "auth/account-exists-with-different-credential":
+        return "This email is already registered with another sign-in method — use that one.";
+      case "auth/email-already-in-use":
+        return "An account with this email address already exists. Please sign in instead.";
+      case "auth/invalid-credential":
+      case "auth/wrong-password":
+        return "Invalid email or password. Please check your credentials.";
+      case "auth/user-not-found":
+        return "No account found with this email. Please check your email or create an account.";
+      case "auth/weak-password":
+        return "Password is too weak. Please use at least 6 characters.";
+      case "auth/too-many-requests":
+        return "Too many failed attempts. Please wait a few minutes before trying again.";
+      case "auth/network-request-failed":
+        return "Network connection error. Please verify your internet connection and try again.";
+      default:
+        return (
+          err?.message?.replace(/^Firebase:\s*/, "") ||
+          "Authentication request failed. Please try again."
+        );
+    }
+  }
+
+  /**
+   * Signs in with Google using Firebase Authentication popup (client-side Web SDK).
+   */
+  async loginWithGoogleFirebase(): Promise<{
+    success: boolean;
+    user?: AuthUser;
+    error?: string;
+  }> {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return { success: false, error: "Firebase authentication is not initialized." };
+    }
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+      const result = await signInWithPopup(auth, provider);
+      const user = this.mapFirebaseUser(result.user, "google");
+      this.persistUser(user);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("codeatlas_active_session_type", "firebase");
+          localStorage.removeItem("codeatlas_demo_active_user");
+          localStorage.removeItem("codeatlas_active_demo_session");
+        } catch {}
+      }
+      return { success: true, user };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Signs in with GitHub using Firebase Authentication popup and preserves user access token.
+   */
+  async loginWithGitHubFirebase(): Promise<{
+    success: boolean;
+    user?: AuthUser;
+    error?: string;
+  }> {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return { success: false, error: "Firebase authentication is not initialized." };
+    }
+    try {
+      const provider = new GithubAuthProvider();
+      provider.addScope("read:user");
+      provider.addScope("user:email");
+      const result = await signInWithPopup(auth, provider);
+      try {
+        const credential = GithubAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken && typeof window !== "undefined") {
+          sessionStorage.setItem("codeatlas_github_token", credential.accessToken);
+          sessionStorage.setItem("github_access_token", credential.accessToken);
+        }
+      } catch {}
+      const user = this.mapFirebaseUser(result.user, "github");
+      this.persistUser(user);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("codeatlas_active_session_type", "firebase");
+          localStorage.removeItem("codeatlas_demo_active_user");
+          localStorage.removeItem("codeatlas_active_demo_session");
+        } catch {}
+      }
+      return { success: true, user };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Creates a new account with email and password via Firebase Auth and dispatches verification email.
+   */
+  async registerWithEmailFirebase(
+    name: string,
+    email: string,
+    pass: string
+  ): Promise<EmailAuthResponse> {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return { success: false, error: "Firebase authentication is not initialized." };
+    }
+    try {
+      const result = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+      if (name.trim()) {
+        try {
+          await updateProfile(result.user, { displayName: name.trim() });
+        } catch {}
+      }
+      await sendEmailVerification(result.user);
+      return {
+        success: true,
+        requiresVerification: true,
+        email: result.user.email || email,
+        message: "We sent a verification link to your email. Check your inbox and spam folder.",
+      };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Signs in an existing user with email and password via Firebase Auth.
+   * Unverified email users are prevented from reaching the dashboard.
+   */
+  async loginWithEmailFirebase(email: string, pass: string): Promise<EmailAuthResponse> {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return { success: false, error: "Firebase authentication is not initialized." };
+    }
+    try {
+      const result = await signInWithEmailAndPassword(auth, email.trim(), pass);
+      if (!result.user.emailVerified) {
+        return {
+          success: false,
+          requiresVerification: true,
+          email: result.user.email || email,
+          error: "Please verify your email address before signing in. Check your inbox and spam folder.",
+        };
+      }
+      const user = this.mapFirebaseUser(result.user, "email");
+      this.persistUser(user);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("codeatlas_active_session_type", "firebase");
+          localStorage.removeItem("codeatlas_demo_active_user");
+          localStorage.removeItem("codeatlas_active_demo_session");
+        } catch {}
+      }
+      return { success: true, user };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Dispatches a password reset email via Firebase Auth.
+   */
+  async sendPasswordResetFirebase(email: string): Promise<EmailAuthResponse> {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      return { success: false, error: "Firebase authentication is not initialized." };
+    }
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      return {
+        success: true,
+        message: "Password reset link sent to your email! Check your inbox and spam folder.",
+      };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Resends verification email to the currently authenticating Firebase user.
+   */
+  async resendEmailVerificationFirebase(): Promise<EmailAuthResponse> {
+    const auth = getFirebaseAuth();
+    if (!auth || !auth.currentUser) {
+      return { success: false, error: "No user currently signing in to resend verification." };
+    }
+    try {
+      await sendEmailVerification(auth.currentUser);
+      return {
+        success: true,
+        message: "A new verification link has been sent to your email. Check your spam folder.",
+      };
+    } catch (err: any) {
+      return { success: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
+   * Reloads Firebase user state and checks if email verification has completed.
+   */
+  async checkEmailVerifiedFirebase(): Promise<{
+    verified: boolean;
+    user?: AuthUser;
+    error?: string;
+  }> {
+    const auth = getFirebaseAuth();
+    if (!auth || !auth.currentUser) {
+      return { verified: false, error: "No user session found to verify." };
+    }
+    try {
+      await auth.currentUser.reload();
+      if (auth.currentUser.emailVerified) {
+        const user = this.mapFirebaseUser(auth.currentUser, "email");
+        this.persistUser(user);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("codeatlas_active_session_type", "firebase");
+            localStorage.removeItem("codeatlas_demo_active_user");
+            localStorage.removeItem("codeatlas_active_demo_session");
+          } catch {}
+        }
+        return { verified: true, user };
+      }
+      return {
+        verified: false,
+        error: "Email is not yet verified. Please click the link in your email first, then continue.",
+      };
+    } catch (err: any) {
+      return { verified: false, error: this.formatFirebaseAuthError(err) };
+    }
+  }
+
+  /**
    * Retrieves the configured public Google OAuth 2.0 Web Client ID
 
    */
@@ -121,20 +385,17 @@ export class AuthService {
 
    */
 
-  async loginWithGoogle(credential: string): Promise<{
-
+  async loginWithGoogle(credential?: string): Promise<{
     success: boolean;
-
     user?: AuthUser;
-
     error?: string;
-
   }> {
+    if (isFirebaseConfigured) {
+      return this.loginWithGoogleFirebase();
+    }
 
     if (!credential) {
-
       return { success: false, error: "Missing Google ID token credential." };
-
     }
 
 
@@ -231,7 +492,46 @@ export class AuthService {
    */
 
   async getSession(): Promise<AuthSession> {
-    if (isDemoMode()) {
+    if (typeof window !== "undefined") {
+      try {
+        if (localStorage.getItem("codeatlas_active_demo_session") === "true") {
+          if (localStorage.getItem("codeatlas_demo_active_user") !== "logged_out") {
+            return {
+              authenticated: true,
+              user: DEMO_USER,
+              provider: "demo",
+            };
+          }
+        }
+      } catch {}
+    }
+
+    if (isFirebaseConfigured && typeof window !== "undefined") {
+      const auth = getFirebaseAuth();
+      if (auth?.currentUser) {
+        const providerId = auth.currentUser.providerData[0]?.providerId || "";
+        const isEmail = providerId === "password" || (!providerId && !auth.currentUser.photoURL);
+        if (!isEmail || auth.currentUser.emailVerified) {
+          const user = this.mapFirebaseUser(auth.currentUser);
+          this.persistUser(user);
+          return {
+            authenticated: true,
+            user,
+            provider: user.provider,
+          };
+        }
+      }
+      const stored = this.getStoredUser();
+      if (stored && stored.provider !== "demo") {
+        return {
+          authenticated: true,
+          user: stored,
+          provider: stored.provider,
+        };
+      }
+    }
+
+    if (isDemoMode() && !isFirebaseConfigured) {
       if (typeof window !== "undefined") {
         try {
           if (localStorage.getItem("codeatlas_demo_active_user") === "logged_out") {
@@ -362,6 +662,9 @@ export class AuthService {
    */
 
   async loginWithCredentials(credentials: LoginCredentials): Promise<EmailAuthResponse> {
+    if (isFirebaseConfigured) {
+      return this.loginWithEmailFirebase(credentials.email, credentials.password);
+    }
 
     try {
 
@@ -456,6 +759,13 @@ export class AuthService {
    */
 
   async register(credentials: RegisterCredentials): Promise<EmailAuthResponse> {
+    if (isFirebaseConfigured) {
+      return this.registerWithEmailFirebase(
+        credentials.name,
+        credentials.email,
+        credentials.password
+      );
+    }
 
     try {
 
@@ -621,6 +931,9 @@ export class AuthService {
    */
 
   async forgotPassword(req: ForgotPasswordRequest): Promise<EmailAuthResponse> {
+    if (isFirebaseConfigured) {
+      return this.sendPasswordResetFirebase(req.email);
+    }
 
     try {
 
@@ -701,54 +1014,40 @@ export class AuthService {
    */
 
   async logout(): Promise<void> {
-    if (isDemoMode()) {
-      if (typeof window !== "undefined") {
+    if (isFirebaseConfigured && typeof window !== "undefined") {
+      const auth = getFirebaseAuth();
+      if (auth) {
         try {
-          localStorage.setItem("codeatlas_demo_active_user", "logged_out");
-          localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
-          localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
-          localStorage.removeItem("codeatlas_access_token");
+          await signOut(auth);
         } catch {}
       }
-      return;
     }
-
-    try {
-
-      await apiClient.post("/auth/logout").catch(() => {});
-
-      await apiClient.delete("/auth/session").catch(() => {});
-
-    } catch {
-
-      // Ignore network errors on logout
-
-    }
-
-
 
     if (typeof window !== "undefined") {
-
       try {
-
+        localStorage.setItem("codeatlas_demo_active_user", "logged_out");
+        localStorage.removeItem("codeatlas_active_demo_session");
+        localStorage.removeItem("codeatlas_active_session_type");
         localStorage.removeItem(STORAGE_KEYS.AUTH_USER);
-
         localStorage.removeItem(STORAGE_KEYS.AUTH_SESSION);
-
         localStorage.removeItem("codeatlas_access_token");
-
+        sessionStorage.removeItem("codeatlas_github_token");
+        sessionStorage.removeItem("github_access_token");
       } catch {}
 
-
-
       if (window.google?.accounts?.id?.disableAutoSelect) {
-
-        window.google.accounts.id.disableAutoSelect();
-
+        try {
+          window.google.accounts.id.disableAutoSelect();
+        } catch {}
       }
-
     }
 
+    if (!isFirebaseConfigured) {
+      try {
+        await apiClient.post("/auth/logout").catch(() => {});
+        await apiClient.delete("/auth/session").catch(() => {});
+      } catch {}
+    }
   }
 
 
@@ -779,7 +1078,21 @@ export class AuthService {
 
   }
 
+  getCurrentUser(): AuthUser | null {
+    return this.getStoredUser();
+  }
 
+  async loginWithGitHub(): Promise<{ success: boolean; user?: AuthUser; error?: string }> {
+    return this.loginWithGitHubFirebase();
+  }
+
+  async loginWithEmail(email: string, pass: string): Promise<EmailAuthResponse> {
+    return this.loginWithEmailFirebase(email, pass);
+  }
+
+  async registerWithEmail(name: string, email: string, pass: string): Promise<EmailAuthResponse> {
+    return this.registerWithEmailFirebase(name, email, pass);
+  }
 
   /**
 
@@ -787,7 +1100,7 @@ export class AuthService {
 
    */
 
-  private persistUser(user: AuthUser): void {
+  persistUser(user: AuthUser): void {
 
     if (typeof window === "undefined") return;
 

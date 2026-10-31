@@ -5,7 +5,9 @@ import Logo from "@/components/Logo";
 import ThemeToggle from "@/components/ThemeToggle";
 import { OtpInput } from "@/components/auth/OtpInput";
 import { useAuth } from "@/hooks/useAuth";
-import { ArrowLeft, CheckCircle2, AlertCircle, XCircle, RotateCw, Clock, MailCheck } from "lucide-react";
+import { authService } from "@/services/auth-service";
+import { isFirebaseConfigured } from "@/lib/firebase";
+import { ArrowLeft, CheckCircle2, AlertCircle, XCircle, RotateCw, Clock, MailCheck, ExternalLink } from "lucide-react";
 import React, { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -13,6 +15,7 @@ function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const emailParam = searchParams?.get("email") || "";
+  const redirectParam = searchParams?.get("redirect") || "/dashboard";
 
   const { verifyOtp, resendOtp, isAuthenticated } = useAuth();
 
@@ -22,6 +25,11 @@ function VerifyEmailContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState<number>(0);
+  const [firebaseActive, setFirebaseActive] = useState<boolean>(false);
+
+  useEffect(() => {
+    setFirebaseActive(Boolean(isFirebaseConfigured));
+  }, []);
 
   useEffect(() => {
     if (emailParam) setEmail(emailParam);
@@ -38,11 +46,58 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (isAuthenticated && !isSubmitting) {
-      router.push("/dashboard");
+      router.replace(redirectParam || "/dashboard");
     }
-  }, [isAuthenticated, isSubmitting, router]);
+  }, [isAuthenticated, isSubmitting, router, redirectParam]);
 
-  const handleVerify = async (e?: React.FormEvent) => {
+  // Firebase Email Verification check
+  const handleCheckFirebaseVerified = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.checkEmailVerifiedFirebase();
+      if (res.verified) {
+        setSuccessMessage("Email successfully verified! Redirecting to dashboard...");
+        setTimeout(() => {
+          router.replace(redirectParam || "/dashboard");
+        }, 600);
+      } else {
+        setErrorMessage(
+          res.error ||
+          "Your email has not been verified yet. Please click the verification link in your email (check Spam or Junk too), then click this button."
+        );
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to check verification status.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Firebase Resend Verification Email
+  const handleResendFirebase = async () => {
+    if (resendCooldown > 0 || isSubmitting) return;
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    setIsSubmitting(true);
+    try {
+      const res = await authService.resendEmailVerificationFirebase();
+      if (res.success) {
+        setSuccessMessage("A fresh verification email has been sent. Check your inbox and spam folder.");
+        setResendCooldown(60);
+      } else {
+        setErrorMessage(res.error || "Unable to resend verification email.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to resend verification email.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Legacy OTP Verification
+  const handleVerifyOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -67,7 +122,7 @@ function VerifyEmailContent() {
       if (res.success && res.user) {
         setSuccessMessage("Email verified! Redirecting to dashboard...");
         setTimeout(() => {
-          router.push("/dashboard");
+          router.replace(redirectParam || "/dashboard");
         }, 250);
       } else {
         setErrorMessage(res.error || "Invalid verification code.");
@@ -79,7 +134,8 @@ function VerifyEmailContent() {
     }
   };
 
-  const handleResend = async () => {
+  // Legacy OTP Resend
+  const handleResendOtp = async () => {
     if (resendCooldown > 0 || isSubmitting) return;
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -134,7 +190,9 @@ function VerifyEmailContent() {
           Verify your email
         </h1>
         <p className="mt-2 text-xs sm:text-sm text-[var(--text-secondary)] leading-relaxed">
-          Enter the 6-digit confirmation code sent to your registered inbox to activate your CodeAtlas account.
+          {firebaseActive
+            ? "We sent a secure verification link to your email address. Click the link in that email to activate your account."
+            : "Enter the 6-digit confirmation code sent to your registered inbox to activate your CodeAtlas account."}
         </p>
 
         {/* Error Notice */}
@@ -183,79 +241,129 @@ function VerifyEmailContent() {
           </div>
         )}
 
-        <form onSubmit={handleVerify} className="mt-6 space-y-4">
-          {!emailParam && (
-            <div>
-              <label
-                htmlFor="verify-email-input"
-                className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-              >
-                Account Email
-              </label>
-              <input
-                id="verify-email-input"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex@codeatlas.dev"
-                className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-page)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
-              />
+        {/* Firebase Verification Flow */}
+        {firebaseActive ? (
+          <div className="mt-6 space-y-4">
+            <div className="p-4 rounded-2xl bg-[var(--primary)]/10 border border-[var(--primary)]/20 text-xs">
+              <p className="font-bold text-[var(--primary)] mb-1">Check your inbox</p>
+              <p className="text-[var(--text-secondary)] leading-relaxed">
+                Click the confirmation link inside the email we sent you. If you don&apos;t see it, be sure to check your Spam or Junk folder.
+              </p>
             </div>
-          )}
 
-          <div className="text-center pt-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-              6-Digit Code
-            </label>
-            <OtpInput
-              value={otpCode}
-              onChange={setOtpCode}
-              onComplete={() => {}}
+            <button
+              type="button"
+              onClick={handleCheckFirebaseVerified}
               disabled={isSubmitting}
-              hasError={Boolean(errorMessage)}
-            />
+              className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <RotateCw className="w-4 h-4 animate-spin" />
+                  <span>Checking status...</span>
+                </>
+              ) : (
+                <span>I&apos;ve verified my email, continue</span>
+              )}
+            </button>
+
+            <div className="pt-2 text-center">
+              <button
+                type="button"
+                disabled={resendCooldown > 0 || isSubmitting}
+                onClick={handleResendFirebase}
+                className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors ${
+                  resendCooldown > 0 || isSubmitting
+                    ? "text-[var(--text-secondary)] opacity-60 cursor-not-allowed"
+                    : "text-[var(--primary)] hover:underline cursor-pointer"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                {resendCooldown > 0 ? (
+                  <span>Resend email in {resendCooldown}s</span>
+                ) : (
+                  <span>Resend verification email</span>
+                )}
+              </button>
+            </div>
           </div>
+        ) : (
+          /* Legacy OTP Verification Flow */
+          <>
+            <form onSubmit={handleVerifyOtp} className="mt-6 space-y-4">
+              {!emailParam && (
+                <div>
+                  <label
+                    htmlFor="verify-email-input"
+                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
+                  >
+                    Account Email
+                  </label>
+                  <input
+                    id="verify-email-input"
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="alex@codeatlas.dev"
+                    className="w-full px-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-page)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                  />
+                </div>
+              )}
 
-          <button
-            type="submit"
-            disabled={isSubmitting || otpCode.length !== 6}
-            className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? (
-              <>
-                <RotateCw className="w-4 h-4 animate-spin" />
-                <span>Verifying...</span>
-              </>
-            ) : (
-              <span>Verify Email</span>
-            )}
-          </button>
-        </form>
+              <div className="text-center pt-2">
+                <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
+                  6-Digit Code
+                </label>
+                <OtpInput
+                  value={otpCode}
+                  onChange={setOtpCode}
+                  onComplete={() => {}}
+                  disabled={isSubmitting}
+                  hasError={Boolean(errorMessage)}
+                />
+              </div>
 
-        {/* Resend Action */}
-        <div className="mt-6 pt-4 border-t border-[var(--border-color)] text-center space-y-2">
-          <p className="text-xs text-[var(--text-secondary)]">
-            Didn&apos;t receive the code?
-          </p>
-          <button
-            type="button"
-            disabled={resendCooldown > 0 || isSubmitting}
-            onClick={handleResend}
-            className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors ${
-              resendCooldown > 0 || isSubmitting
-                ? "text-[var(--text-secondary)] opacity-60 cursor-not-allowed"
-                : "text-[var(--primary)] hover:underline cursor-pointer"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            {resendCooldown > 0 ? (
-              <span>Resend code in {resendCooldown}s</span>
-            ) : (
-              <span>Resend verification code</span>
-            )}
-          </button>
-        </div>
+              <button
+                type="submit"
+                disabled={isSubmitting || otpCode.length !== 6}
+                className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSubmitting ? (
+                  <>
+                    <RotateCw className="w-4 h-4 animate-spin" />
+                    <span>Verifying...</span>
+                  </>
+                ) : (
+                  <span>Verify Email</span>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-6 pt-4 border-t border-[var(--border-color)] text-center space-y-2">
+              <p className="text-xs text-[var(--text-secondary)]">
+                Didn&apos;t receive the code?
+              </p>
+              <button
+                type="button"
+                disabled={resendCooldown > 0 || isSubmitting}
+                onClick={handleResendOtp}
+                className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors ${
+                  resendCooldown > 0 || isSubmitting
+                    ? "text-[var(--text-secondary)] opacity-60 cursor-not-allowed"
+                    : "text-[var(--primary)] hover:underline cursor-pointer"
+                }`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                {resendCooldown > 0 ? (
+                  <span>Resend code in {resendCooldown}s</span>
+                ) : (
+                  <span>Resend verification code</span>
+                )}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Footer */}

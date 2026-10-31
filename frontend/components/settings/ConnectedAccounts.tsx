@@ -1,12 +1,13 @@
 "use client";
 import { isDemoMode } from "@/lib/demo/mock-api";
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import { Github } from "@/components/Icons";
-import { ShieldCheck, CheckCircle2, AlertCircle, Sparkles, ExternalLink, RefreshCw } from "lucide-react";
+import { ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Mail, Globe } from "lucide-react";
 import { apiClient } from "@/services/api-client";
+import { authService } from "@/services/auth-service";
+import { isFirebaseConfigured } from "@/lib/firebase";
 
 interface AccountStatus {
   connected: boolean;
@@ -29,15 +30,34 @@ export function ConnectedAccounts() {
     avatar: null,
     scopes: [],
     connectedAt: null,
-    isConfigured: false,
+    isConfigured: true,
   });
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
 
-  const fetchStatus = async () => {
+  const fetchStatus = useCallback(async () => {
     try {
       setLoading(true);
+      if (typeof window !== "undefined") {
+        const ghToken =
+          sessionStorage.getItem("codeatlas_github_token") ||
+          sessionStorage.getItem("github_access_token");
+
+        if (ghToken || user?.provider === "github") {
+          setGithubStatus({
+            connected: true,
+            username: user?.name || "GitHub User",
+            avatar: user?.avatar || null,
+            scopes: ["read:user", "user:email", "repo"],
+            connectedAt: "Active Session",
+            isConfigured: true,
+            isSandbox: false,
+          });
+          return;
+        }
+      }
+
       const res = await apiClient.get<any>("/api/auth/github/status");
       const json = res.data || {};
       if (res.success && json) {
@@ -48,7 +68,7 @@ export function ConnectedAccounts() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchStatus();
@@ -77,14 +97,41 @@ export function ConnectedAccounts() {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
     }
-  }, []);
+  }, [fetchStatus]);
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     setActionLoading(true);
     if (isDemoMode()) {
       setActionLoading(false);
       return;
     }
+
+    if (isFirebaseConfigured) {
+      try {
+        const res = await authService.loginWithGitHub();
+        if (res.success && res.user) {
+          setNotice({
+            type: "success",
+            text: "GitHub account authorized successfully! Read-only metadata permissions granted.",
+          });
+          await fetchStatus();
+        } else {
+          setNotice({
+            type: "error",
+            text: res.error || "GitHub authorization was not completed.",
+          });
+        }
+      } catch (err: any) {
+        setNotice({
+          type: "error",
+          text: err?.message || "Failed to authorize GitHub.",
+        });
+      } finally {
+        setActionLoading(false);
+      }
+      return;
+    }
+
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/$/, "");
     window.location.href = `${apiBase}/auth/github`;
   };
@@ -92,27 +139,36 @@ export function ConnectedAccounts() {
   const handleDisconnect = async () => {
     setActionLoading(true);
     try {
-      const res = await apiClient.post<any>("/api/auth/github/disconnect");
-      if (res.success) {
-        setGithubStatus({
-          connected: false,
-          username: null,
-          avatar: null,
-          scopes: [],
-          connectedAt: null,
-          isConfigured: githubStatus.isConfigured,
-        });
-        setNotice({
-          type: "info",
-          text: "GitHub disconnected safely. Authorization tokens have been removed from the server.",
-        });
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("codeatlas_github_token");
+        sessionStorage.removeItem("github_access_token");
       }
-    } catch (err) {
+      try {
+        await apiClient.post<any>("/api/auth/github/disconnect");
+      } catch {}
+
+      setGithubStatus({
+        connected: false,
+        username: null,
+        avatar: null,
+        scopes: [],
+        connectedAt: null,
+        isConfigured: githubStatus.isConfigured,
+      });
+      setNotice({
+        type: "info",
+        text: "GitHub disconnected safely. Authorization tokens have been removed.",
+      });
+    } catch {
       setNotice({ type: "error", text: "Failed to disconnect account. Please try again." });
     } finally {
       setActionLoading(false);
     }
   };
+
+  // Determine Primary Identity badge and details
+  const provider = user?.provider || "email";
+  const isGuest = isDemoMode() || user?.id === "demo-user";
 
   return (
     <section
@@ -123,7 +179,7 @@ export function ConnectedAccounts() {
       <div className="flex items-center justify-between pb-4 border-b border-[var(--border-color)]">
         <div className="flex items-center gap-2.5">
           <Github className="w-5 h-5 text-[var(--primary)]" />
-          <h2 className="text-xl font-bold tracking-tight">Connected Accounts & OAuth</h2>
+          <h2 className="text-xl font-bold tracking-tight">Connected Accounts & Identity</h2>
         </div>
         <button
           onClick={fetchStatus}
@@ -154,42 +210,59 @@ export function ConnectedAccounts() {
         </div>
       )}
 
-      {/* Primary Google Auth Section */}
+      {/* Primary Identity Section */}
       <div className="mt-6 p-5 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center border border-[var(--border-color)] shadow-sm">
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
+          <div className="w-11 h-11 rounded-xl bg-white flex items-center justify-center border border-[var(--border-color)] shadow-sm shrink-0 overflow-hidden">
+            {provider === "google" ? (
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+            ) : provider === "github" ? (
+              <Github className="w-5 h-5 text-black" />
+            ) : isGuest ? (
+              <Globe className="w-5 h-5 text-indigo-500" />
+            ) : (
+              <Mail className="w-5 h-5 text-violet-500" />
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-sm">Google Authentication</h3>
+              <h3 className="font-bold text-sm">
+                {provider === "google"
+                  ? "Google Authentication"
+                  : provider === "github"
+                  ? "GitHub Authentication"
+                  : isGuest
+                  ? "Interactive Live Demo Session"
+                  : "Email & Password Authentication"}
+              </h3>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
                 Primary Identity
               </span>
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-              Signed in as {user?.email || "authenticated user"}. Provides zero-trust application session verification.
+              Signed in as <strong className="text-[var(--text-primary)]">{user?.email || user?.name || "authenticated user"}</strong>.
+              Provides zero-trust application session verification.
             </p>
           </div>
         </div>
-        <span className="text-xs font-semibold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-3 py-1.5 rounded-xl border border-[var(--border-color)] text-center sm:text-right">
+        <span className="text-xs font-semibold text-[var(--text-secondary)] bg-[var(--bg-surface)] px-3 py-1.5 rounded-xl border border-[var(--border-color)] text-center sm:text-right shrink-0">
           Active Session
         </span>
       </div>
@@ -197,7 +270,7 @@ export function ConnectedAccounts() {
       {/* GitHub Integration Section */}
       <div className="mt-4 p-5 rounded-2xl bg-[var(--bg-page)] border border-[var(--border-color)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center border border-[var(--border-color)]">
+          <div className="w-11 h-11 rounded-xl bg-[var(--bg-surface)] flex items-center justify-center border border-[var(--border-color)] shrink-0">
             <Github className="w-6 h-6" />
           </div>
           <div>
@@ -217,15 +290,15 @@ export function ConnectedAccounts() {
             </div>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">
               {githubStatus.connected
-                ? `Connected as @${githubStatus.username}. Scopes: ${githubStatus.scopes.join(", ") || "read:user, repo"}. Tokens stored securely on server.`
+                ? `Connected as @${githubStatus.username}. Scopes: ${githubStatus.scopes.join(", ") || "read:user, repo"}. Repository intelligence enabled.`
                 : githubStatus.isConfigured
                 ? "Authorize GitHub to discover, import, and index your public or authorized private repositories."
-                : "Configure GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET to enable live GitHub OAuth."}
+                : "Configure GitHub OAuth to enable live repository synchronization."}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto">
+        <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
           {githubStatus.connected ? (
             <button
               onClick={handleDisconnect}

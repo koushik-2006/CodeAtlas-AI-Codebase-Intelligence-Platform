@@ -1,2756 +1,1070 @@
 "use client";
+
 import { isDemoMode } from "@/lib/demo/mock-api";
-
-
-
+import { isFirebaseConfigured } from "@/lib/firebase";
 import Link from "next/link";
-
 import Logo from "@/components/Logo";
-
 import City from "@/components/City";
-
 import ThemeToggle from "@/components/ThemeToggle";
-
 import { useTheme } from "@/components/ThemeProvider";
-
 import { useAuth } from "@/hooks/useAuth";
-
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
-
 import { GitHubSignInButton } from "@/components/auth/GitHubSignInButton";
-
 import { OtpInput } from "@/components/auth/OtpInput";
-
 import {
-
   ArrowLeft,
-
   ShieldCheck,
-
   Sparkles,
-
   AlertCircle,
-
   CheckCircle2,
-
   XCircle,
-
   Eye,
-
   EyeOff,
-
   Mail,
-
   Lock,
-
   User,
-
-  KeyRound,
-
   RotateCw,
-
   Clock,
-
   ArrowRight,
-
 } from "lucide-react";
-
 import React, { useState, useEffect, Suspense } from "react";
-
 import { useRouter, useSearchParams } from "next/navigation";
 
-
-
-type AuthMode = "signin" | "register" | "verify_otp" | "forgot_password" | "reset_password";
-
-
+type AuthMode =
+  | "signin"
+  | "register"
+  | "verify_otp"
+  | "verify_email_link"
+  | "forgot_password"
+  | "reset_password";
 
 function LoginFormContent() {
-
   const router = useRouter();
-
   const searchParams = useSearchParams();
-
   const redirectTarget = searchParams?.get("redirect");
-
   const modeParam = searchParams?.get("mode");
-
   const emailParam = searchParams?.get("email");
-
   const errorParam = searchParams?.get("error");
 
-
-
   const { theme } = useTheme();
-  const [isDemo, setIsDemo] = useState(false);
-  useEffect(() => { setIsDemo(isDemoMode()); }, []);
-
   const isDark = theme === "dark";
 
-
-
   const {
-
     user,
-
     logout,
-
     loginWithGoogle,
-
+    loginWithGitHub,
     loginWithCredentials,
-
     register,
-
     verifyOtp,
-
     resendOtp,
-
     forgotPassword,
-
     resetPassword,
-
+    checkEmailVerified,
+    resendEmailVerification,
+    enterDemoMode,
     isAuthenticated,
-
     isLoading: authChecking,
-
   } = useAuth();
 
-
-
-  // Navigation mode
-
   const [mode, setMode] = useState<AuthMode>("signin");
-
-
-
-  // Form Fields
-
   const [name, setName] = useState("");
-
   const [email, setEmail] = useState("");
-
   const [password, setPassword] = useState("");
-
   const [confirmPassword, setConfirmPassword] = useState("");
-
   const [otpCode, setOtpCode] = useState("");
-
   const [resetToken, setResetToken] = useState("");
-
   const [newPassword, setNewPassword] = useState("");
-
   const [confirmNewPassword, setConfirmNewPassword] = useState("");
-
   const [acceptTerms, setAcceptTerms] = useState(true);
 
-
-
-  // Password Visibility
-
   const [showPassword, setShowPassword] = useState(false);
-
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-
   const [showNewPassword, setShowNewPassword] = useState(false);
 
-
-
-  // UI & Loading States
-
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-
   const [maskedEmail, setMaskedEmail] = useState<string>("");
-
   const [resendCooldown, setResendCooldown] = useState<number>(0);
 
-
-
-  // Initialize from searchParams
-
   useEffect(() => {
-
     if (modeParam === "register") setMode("register");
-
-    else if (modeParam === "verify") setMode("verify_otp");
-
+    else if (modeParam === "verify") setMode(isFirebaseConfigured ? "verify_email_link" : "verify_otp");
     else if (modeParam === "forgot") setMode("forgot_password");
-
     else if (modeParam === "reset") setMode("reset_password");
 
     if (emailParam) setEmail(emailParam);
-
     if (errorParam) setErrorMessage(decodeURIComponent(errorParam));
-
   }, [modeParam, emailParam, errorParam]);
 
-
-
-  // Resend Cooldown Timer
-
   useEffect(() => {
-
     if (resendCooldown <= 0) return;
-
     const timer = setInterval(() => {
-
       setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0));
-
     }, 1000);
-
     return () => clearInterval(timer);
-
   }, [resendCooldown]);
 
-
-
-  // Only auto-redirect if an explicit redirect param is requested (e.g. from a protected route)
+  const completeAuthSuccess = () => {
+    const target =
+      redirectTarget &&
+      redirectTarget.startsWith("/") &&
+      !redirectTarget.startsWith("//") &&
+      !redirectTarget.includes(":")
+        ? redirectTarget
+        : "/dashboard";
+    router.replace(target);
+  };
 
   useEffect(() => {
-
     if (isAuthenticated && !authChecking && !isSubmitting) {
-
-      const dest =
-
-        redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
-
-          ? redirectTarget
-
-          : "/dashboard";
-
-      router.push(dest);
-
+      completeAuthSuccess();
     }
-
-  }, [isAuthenticated, authChecking, isSubmitting, redirectTarget, router]);
-
-
+  }, [isAuthenticated, authChecking, isSubmitting]);
 
   const clearMessages = () => {
-
     setErrorMessage(null);
-
     setSuccessMessage(null);
-
   };
-
-
-
-  // Helper for safe relative redirect
-
-  const completeAuthSuccess = () => {
-
-    const target =
-
-      redirectTarget && redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
-
-        ? redirectTarget
-
-        : "/dashboard";
-
-    setTimeout(() => {
-
-      router.push(target);
-
-    }, 250);
-
-  };
-
-
-
-  // 1. SIGN IN SUBMIT
 
   const handleSignInSubmit = async (e: React.FormEvent) => {
-
     e.preventDefault();
-
     clearMessages();
-
-
 
     if (!email.trim() || !password) {
-
-      setErrorMessage("Please enter both your email address and password.");
-
+      setErrorMessage("Please enter both email and password.");
       return;
-
     }
-
-
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email.trim())) {
-
-      setErrorMessage("Please enter a valid email address.");
-
-      return;
-
-    }
-
-
 
     setIsSubmitting(true);
-
     try {
-
-      const result = await loginWithCredentials({ email: email.trim(), password });
-
-      if (result.success && result.user) {
-
-        setSuccessMessage("Authenticated successfully! Redirecting...");
-
+      const res = await loginWithCredentials({ email: email.trim(), password });
+      if (res.success && res.user) {
         completeAuthSuccess();
-
-      } else if (result.requiresVerification) {
-
-        setMaskedEmail(result.email || email);
-
-        setMode("verify_otp");
-
-        setSuccessMessage(
-
-          result.message || "Email verification required. We've sent a 6-digit code."
-
-        );
-
-        if (result.retryAfterSeconds) setResendCooldown(result.retryAfterSeconds);
-
+      } else if (res.requiresVerification) {
+        setMaskedEmail(email.trim());
+        if (isFirebaseConfigured) {
+          setMode("verify_email_link");
+          setErrorMessage(
+            res.error || "Please verify your email address before signing in. Check your inbox and spam folder."
+          );
+        } else {
+          setMode("verify_otp");
+          setErrorMessage(res.error || "Please verify your email address to continue.");
+        }
       } else {
-
-        setErrorMessage(result.error || "Incorrect email or password.");
-
+        setErrorMessage(res.error || "Incorrect email or password.");
       }
-
     } catch (err: any) {
-
-      const msg = err?.message || "";
-
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || err?.name === "TypeError") {
-
-        setErrorMessage("Unable to connect to the server. Please try again.");
-
-      } else {
-
-        setErrorMessage(msg || "Unable to connect to the server. Please try again.");
-
-      }
-
+      setErrorMessage(err?.message || "Unable to sign in. Please try again.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
-
-
-
-  // 2. CREATE ACCOUNT SUBMIT
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
-
     e.preventDefault();
-
     clearMessages();
-
-
 
     if (!name.trim()) {
-
       setErrorMessage("Please enter your full name.");
-
       return;
-
     }
 
-
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email.trim())) {
-
+    if (!email.trim() || !email.includes("@")) {
       setErrorMessage("Please enter a valid email address.");
-
       return;
-
     }
 
-
-
-    if (password.length < 8) {
-
-      setErrorMessage("Password must be at least 8 characters long.");
-
+    if (password.length < 6) {
+      setErrorMessage("Password must be at least 6 characters long.");
       return;
-
     }
-
-
 
     if (password !== confirmPassword) {
-
-      setErrorMessage("Passwords do not match. Please re-enter your password.");
-
+      setErrorMessage("Passwords do not match.");
       return;
-
     }
-
-
 
     if (!acceptTerms) {
-
       setErrorMessage("Please accept the Terms of Service and Privacy Policy to continue.");
-
       return;
-
     }
-
-
 
     setIsSubmitting(true);
-
     try {
-
-      const result = await register({
-
+      const res = await register({
         name: name.trim(),
-
         email: email.trim(),
-
         password,
-
       });
 
-
-
-      if (result.success) {
-
-        if (result.requiresVerification) {
-
-          setMaskedEmail(result.email || email.trim());
-
-          setMode("verify_otp");
-
+      if (res.success) {
+        setMaskedEmail(res.email || email.trim());
+        if (isFirebaseConfigured) {
+          setMode("verify_email_link");
           setSuccessMessage(
-
-            result.message || "Account created! A 6-digit verification code has been sent."
-
+            res.message || "We sent a verification link to your email. Check your inbox and spam folder."
           );
-
-          setResendCooldown(result.retryAfterSeconds || 60);
-
-        } else if (result.user) {
-
-          setSuccessMessage("Account created successfully! Redirecting to dashboard...");
-
-          completeAuthSuccess();
-
+        } else if (res.requiresVerification) {
+          setMode("verify_otp");
+          setSuccessMessage(res.message || "Account created! A 6-digit verification code has been sent.");
         } else {
-
-          setSuccessMessage(result.message || "Account created successfully! Please sign in with your credentials.");
-
-          setMode("signin");
-
+          completeAuthSuccess();
         }
-
       } else {
-
-        setErrorMessage(result.error || "Unable to create account. Please try again.");
-
+        setErrorMessage(res.error || "Unable to create account. Please try again.");
       }
-
     } catch (err: any) {
-
-      const msg = err?.message || "";
-
-      if (msg.includes("Failed to fetch") || msg.includes("NetworkError") || err?.name === "TypeError") {
-
-        setErrorMessage("Unable to connect to the server. Please try again.");
-
-      } else {
-
-        setErrorMessage(msg || "Unable to connect to the server. Please try again.");
-
-      }
-
+      setErrorMessage(err?.message || "Registration failed. Please try again.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
-
-
-
-  // 3. VERIFY OTP SUBMIT
 
   const handleVerifyOtpSubmit = async (e?: React.FormEvent) => {
-
     if (e) e.preventDefault();
-
     clearMessages();
-
-
 
     if (otpCode.length !== 6) {
-
       setErrorMessage("Please enter the complete 6-digit verification code.");
-
       return;
-
     }
 
-
-
     setIsSubmitting(true);
-
     try {
-
-      const result = await verifyOtp({
-
-        email: email.trim(),
-
+      const res = await verifyOtp({
+        email: (maskedEmail || email).trim(),
         otp: otpCode.trim(),
-
       });
 
-
-
-      if (result.success && result.user) {
-
+      if (res.success && res.user) {
         setSuccessMessage("Email verified! Redirecting to dashboard...");
-
         completeAuthSuccess();
-
       } else {
-
-        setErrorMessage(result.error || "Invalid verification code.");
-
+        setErrorMessage(res.error || "Invalid verification code.");
       }
-
     } catch (err: any) {
-
-      setErrorMessage(err?.message || "Failed to verify code.");
-
+      setErrorMessage(err?.message || "Verification failed.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
 
-
-
-  // 4. RESEND OTP
-
-  const handleResendOtp = async () => {
-
-    if (resendCooldown > 0 || isSubmitting) return;
-
+  const handleCheckEmailVerified = async () => {
     clearMessages();
-
-
-
     setIsSubmitting(true);
-
     try {
-
-      const result = await resendOtp({ email: email.trim() });
-
-      if (result.success) {
-
-        setSuccessMessage(result.message || "A new 6-digit code has been sent.");
-
-        setResendCooldown(result.retryAfterSeconds || 60);
-
+      const res = await checkEmailVerified();
+      if (res.verified) {
+        setSuccessMessage("Email verified! Redirecting to dashboard...");
+        setTimeout(() => completeAuthSuccess(), 300);
       } else {
-
-        setErrorMessage(result.error || "Unable to resend code.");
-
-        if (result.retryAfterSeconds) setResendCooldown(result.retryAfterSeconds);
-
+        setErrorMessage(
+          res.error || "Email is not yet verified. Please click the link in your email first, then continue."
+        );
       }
-
     } catch (err: any) {
-
-      setErrorMessage(err?.message || "Failed to resend code.");
-
+      setErrorMessage(err?.message || "Verification check failed.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
 
-
-
-  // 5. FORGOT PASSWORD SUBMIT
+  const handleResendVerificationEmail = async () => {
+    if (resendCooldown > 0 || isSubmitting) return;
+    clearMessages();
+    setIsSubmitting(true);
+    try {
+      const res = await resendEmailVerification();
+      if (res.success) {
+        setSuccessMessage(res.message || "A new verification link has been sent. Check Spam too!");
+        setResendCooldown(60);
+      } else {
+        setErrorMessage(res.error || "Unable to resend email.");
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || "Failed to resend verification email.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleForgotPasswordSubmit = async (e: React.FormEvent) => {
-
     e.preventDefault();
-
     clearMessages();
 
-
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    if (!emailRegex.test(email.trim())) {
-
-      setErrorMessage("Please enter a valid email address.");
-
+    if (!email.trim()) {
+      setErrorMessage("Please enter your email address.");
       return;
-
     }
-
-
 
     setIsSubmitting(true);
-
     try {
-
-      const result = await forgotPassword({ email: email.trim() });
-
-      setSuccessMessage(
-
-        result.message ||
-
-          "If an account with that email exists, reset instructions have been sent."
-
-      );
-
+      const res = await forgotPassword({ email: email.trim() });
+      if (res.success) {
+        setSuccessMessage(
+          res.message || "Password reset link sent to your email! Check your inbox and spam folder."
+        );
+      } else {
+        setErrorMessage(res.error || "Failed to request password reset.");
+      }
     } catch (err: any) {
-
-      setErrorMessage(err?.message || "Failed to submit password reset request.");
-
+      setErrorMessage(err?.message || "Password reset request failed.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
-
-
-
-  // 6. RESET PASSWORD SUBMIT
 
   const handleResetPasswordSubmit = async (e: React.FormEvent) => {
-
     e.preventDefault();
-
     clearMessages();
 
-
-
-    if (!resetToken.trim()) {
-
-      setErrorMessage("Please enter the recovery code sent to your email.");
-
+    if (!email.trim() || !resetToken.trim()) {
+      setErrorMessage("Email and reset token are required.");
       return;
-
     }
 
-
-
-    if (newPassword.length < 8) {
-
-      setErrorMessage("Password must be at least 8 characters long.");
-
+    if (newPassword.length < 6) {
+      setErrorMessage("New password must be at least 6 characters.");
       return;
-
     }
-
-
 
     if (newPassword !== confirmNewPassword) {
-
       setErrorMessage("Passwords do not match.");
-
       return;
-
     }
 
-
-
     setIsSubmitting(true);
-
     try {
-
-      const result = await resetPassword({
-
+      const res = await resetPassword({
         email: email.trim(),
-
         token: resetToken.trim(),
-
         newPassword,
-
       });
 
-
-
-      if (result.success) {
-
-        setSuccessMessage(
-
-          result.message || "Password successfully reset! Please sign in with your new password."
-
-        );
-
-        setPassword("");
-
+      if (res.success) {
+        setSuccessMessage(res.message || "Password reset successfully! Please sign in.");
         setMode("signin");
-
       } else {
-
-        setErrorMessage(result.error || "Failed to reset password.");
-
+        setErrorMessage(res.error || "Failed to reset password.");
       }
-
     } catch (err: any) {
-
-      setErrorMessage(err?.message || "Failed to reset password.");
-
+      setErrorMessage(err?.message || "Password reset failed.");
     } finally {
-
       setIsSubmitting(false);
-
     }
-
   };
 
-
-
-  // Google OAuth Handlers
-
-  const handleGoogleCredential = async (credential: string) => {
-
-    setIsSubmitting(true);
-
+  const handleGoogleSignInClick = async () => {
     clearMessages();
-
-
-
+    setIsSubmitting(true);
     try {
-
-      const result = await loginWithGoogle(credential);
-
-      if (result.success && result.user) {
-
-        setSuccessMessage("Authenticated with Google! Redirecting...");
-
+      const res = await loginWithGoogle();
+      if (res.success && res.user) {
         completeAuthSuccess();
-
-      } else {
-
-        setErrorMessage(
-
-          result.error || "Google authentication was rejected by CodeAtlas backend."
-
-        );
-
-        setIsSubmitting(false);
-
+      } else if (res.error) {
+        setErrorMessage(res.error);
       }
-
     } catch (err: any) {
-
-      setErrorMessage(err?.message || "Network error connecting to CodeAtlas authentication service.");
-
+      setErrorMessage(err?.message || "Google sign in failed.");
+    } finally {
       setIsSubmitting(false);
-
     }
-
   };
 
-
-
-  const handleGoogleError = (err: string) => {
-
-    setErrorMessage(err);
-
-    setIsSubmitting(false);
-
+  const handleGitHubSignInClick = async () => {
+    clearMessages();
+    setIsSubmitting(true);
+    try {
+      const res = await loginWithGitHub();
+      if (res.success && res.user) {
+        completeAuthSuccess();
+      } else if (res.error) {
+        setErrorMessage(res.error);
+      }
+    } catch (err: any) {
+      setErrorMessage(err?.message || "GitHub sign in failed.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-
-
-  if (isAuthenticated && !authChecking && !isSubmitting) {
-
-    return (
-
-      <div className="flex min-h-screen items-center justify-center bg-[var(--bg-page)] text-[var(--text-primary)]">
-
-        <div className="flex flex-col items-center gap-3">
-
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
-
-          <p className="text-xs font-mono font-medium text-[var(--text-secondary)]">Redirecting to dashboard...</p>
-
-        </div>
-
-      </div>
-
-    );
-
-  }
-
-
+  const handleDemoAccess = () => {
+    enterDemoMode();
+    completeAuthSuccess();
+  };
 
   return (
-
     <div className="min-h-screen grid lg:grid-cols-2 bg-[var(--bg-page)] text-[var(--text-primary)] transition-colors">
-
       {/* Left Form Panel */}
-
       <div className="flex flex-col justify-between p-6 sm:p-10 lg:p-16 max-w-xl mx-auto w-full">
-
-        {/* Top Header */}
-
         <div className="flex items-center justify-between">
-
           <Link
-
             href="/"
-
             aria-label="CodeAtlas home"
-
             className="flex items-center cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] group"
-
           >
-
             <Logo size="md" />
-
           </Link>
-
           <ThemeToggle />
-
         </div>
 
-
-
-        {/* Center Content */}
-
         <div className="my-6">
-
           <Link
-
             href="/"
-
             className="inline-flex items-center gap-2 text-xs font-bold text-[var(--text-secondary)] hover:text-[var(--text-primary)] mb-6 transition-colors"
-
           >
-
             <ArrowLeft className="w-4 h-4" />
-
             Back to home
-
           </Link>
 
-
-
           {/* Active Session Notice when already logged in */}
-
           {isAuthenticated && user && (
-
             <div className="mb-6 p-4 rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in">
-
               <div className="flex items-center gap-3">
-
                 {user.avatar ? (
-
                   /* eslint-disable-next-line @next/next/no-img-element */
                   <img
-
                     src={user.avatar}
-
                     alt={user.name || "User Avatar"}
-
                     className="w-10 h-10 rounded-full object-cover border border-[var(--primary)]/30"
-
                   />
-
                 ) : (
-
                   <div className="w-10 h-10 rounded-full bg-[var(--primary)] text-white flex items-center justify-center font-bold text-sm">
-
                     {user.name?.[0] || "U"}
-
                   </div>
-
                 )}
-
                 <div>
-
                   <p className="font-semibold text-[var(--text-secondary)]">Currently signed in as</p>
-
                   <p className="font-bold text-sm text-[var(--text-primary)]">{user.name || user.email}</p>
-
                 </div>
-
               </div>
-
               <div className="flex items-center gap-2 w-full sm:w-auto">
-
-                <Link
-
-                  href="/dashboard"
-
-                  className="flex-1 sm:flex-none text-center px-4 py-2 rounded-xl bg-[var(--primary)] text-white font-bold hover:bg-[var(--primary-hover)] transition-all shadow-sm"
-
-                >
-
-                  Go to Dashboard
-
-                </Link>
-
                 <button
-
                   type="button"
-
-                  onClick={async () => {
-
-                    await logout();
-
-                    window.location.reload();
-
-                  }}
-
-                  className="flex-1 sm:flex-none text-center px-3.5 py-2 rounded-xl border border-[var(--border-color)] font-semibold text-[var(--text-secondary)] hover:text-red-500 hover:border-red-500/50 hover:bg-red-500/10 transition-colors"
-
+                  onClick={completeAuthSuccess}
+                  className="flex-1 sm:flex-none text-center px-4 py-2 rounded-xl bg-[var(--primary)] text-white font-bold hover:bg-[var(--primary-hover)] transition-all shadow-sm"
                 >
-
-                  Sign Out to Login Again
-
+                  Go to Dashboard
                 </button>
-
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await logout();
+                  }}
+                  className="flex-1 sm:flex-none text-center px-3.5 py-2 rounded-xl border border-[var(--border-color)] font-semibold text-[var(--text-secondary)] hover:text-red-500 hover:border-red-500/50 hover:bg-red-500/10 transition-colors"
+                >
+                  Sign Out
+                </button>
               </div>
-
             </div>
-
           )}
 
-
-
-          {/* Heading Section */}
-
-          {mode === "signin" && (
-
-            <>
-
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-
-                {isDark ? "Welcome back." : "Hello, mapmaker."}
-
-              </h1>
-
-              <p className="mt-2 text-sm sm:text-base font-medium text-[var(--text-secondary)]">
-
-                Sign in to continue exploring your code city.
-
-              </p>
-
-            </>
-
-          )}
-
-
-
-          {mode === "register" && (
-
-            <>
-
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-
-                Create your account
-
-              </h1>
-
-              <p className="mt-2 text-sm sm:text-base font-medium text-[var(--text-secondary)]">
-
-                Start mapping your architectures and codebase intelligence.
-
-              </p>
-
-            </>
-
-          )}
-
-
-
-          {mode === "verify_otp" && (
-
-            <>
-
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-
-                Verify your email
-
-              </h1>
-
-              <p className="mt-2 text-sm sm:text-base font-medium text-[var(--text-secondary)]">
-
-                We&apos;ve sent a 6-digit confirmation code to{" "}
-
-                <strong className="text-[var(--text-primary)] font-mono">
-
-                  {maskedEmail || email || "your inbox"}
-
-                </strong>
-
-                .
-
-              </p>
-
-            </>
-
-          )}
-
-
-
-          {mode === "forgot_password" && (
-
-            <>
-
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-
-                Reset your password
-
-              </h1>
-
-              <p className="mt-2 text-sm sm:text-base font-medium text-[var(--text-secondary)]">
-
-                Enter your email address and we&apos;ll send you recovery instructions.
-
-              </p>
-
-            </>
-
-          )}
-
-
-
-          {mode === "reset_password" && (
-
-            <>
-
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-
-                Set new password
-
-              </h1>
-
-              <p className="mt-2 text-sm sm:text-base font-medium text-[var(--text-secondary)]">
-
-                Enter your recovery code and choose a new secure password.
-
-              </p>
-
-            </>
-
-          )}
-
-
-
-          {/* Navigation Segmented Control: Sign In vs Create Account */}
-
-          {(mode === "signin" || mode === "register") && (
-
-            <div
-
-              role="tablist"
-
-              aria-label="Authentication modes"
-
-              className="mt-6 p-1 rounded-2xl bg-[var(--border-color)]/30 border border-[var(--border-color)] flex items-center gap-1"
-
+          {/* Demo Mode Quick Access Banner */}
+          <div className="p-4 rounded-2xl border border-[var(--primary)]/30 bg-[var(--primary)]/5 flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center gap-2.5">
+              <Sparkles className="w-5 h-5 text-[var(--primary)] shrink-0" />
+              <div>
+                <p className="text-xs font-bold text-[var(--text-primary)]">Explore without signing in</p>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  Instant live demo mode with preloaded repositories and intelligence tools
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleDemoAccess}
+              className="px-3.5 py-1.5 rounded-xl bg-[var(--primary)] text-white font-bold text-xs hover:bg-[var(--primary-hover)] transition-all shadow-sm shrink-0 whitespace-nowrap"
             >
+              Explore live demo →
+            </button>
+          </div>
 
-              <button
-
-                type="button"
-
-                role="tab"
-
-                id="tab-signin"
-
-                aria-selected={mode === "signin"}
-
-                aria-controls="panel-signin"
-
-                onClick={() => {
-
-                  setMode("signin");
-
-                  clearMessages();
-
-                }}
-
-                className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
-
-                  mode === "signin"
-
-                    ? "bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm border border-[var(--border-color)]/60"
-
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
-                }`}
-
-              >
-
-                Sign In
-
-              </button>
-
-              <button
-
-                type="button"
-
-                role="tab"
-
-                id="tab-register"
-
-                aria-selected={mode === "register"}
-
-                aria-controls="panel-register"
-
-                onClick={() => {
-
-                  setMode("register");
-
-                  clearMessages();
-
-                }}
-
-                className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
-
-                  mode === "register"
-
-                    ? "bg-[var(--bg-surface)] text-[var(--text-primary)] shadow-sm border border-[var(--border-color)]/60"
-
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
-                }`}
-
-              >
-
-                Create Account
-
-              </button>
-
-            </div>
-
-          )}
-
-
-
-          {/* Error Message Banner */}
-
+          {/* Alerts / Error & Success Banners */}
           {errorMessage && (
-
-            <div
-
-              role="alert"
-
-              aria-live="assertive"
-
-              className="mt-5 p-3.5 rounded-2xl border border-red-500/30 bg-red-500/10 text-xs text-red-500 flex items-start gap-3 animate-in fade-in"
-
-            >
-
-              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-
-              <div className="flex-1 text-left">
-
-                <p className="font-bold">Authentication Notice</p>
-
-                <p className="mt-0.5 opacity-90 leading-relaxed">{errorMessage}</p>
-
-                {errorMessage.includes("GitHub OAuth is not configured") && (
-
-                  <div className="mt-3 pt-2 border-t border-red-500/20 flex flex-wrap items-center gap-2">
-
-                    <a
-
-                      href="/api/auth/github?mode=login&sandbox=true"
-
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--primary)] text-white text-xs font-semibold hover:opacity-90 shadow-sm transition-opacity"
-
-                    >
-
-                      <Sparkles className="w-3.5 h-3.5" />
-
-                      Sign In with Sandbox GitHub Demo
-
-                    </a>
-
-                  </div>
-
-                )}
-
-              </div>
-
-              <button
-
-                type="button"
-
-                onClick={() => setErrorMessage(null)}
-
-                className="text-red-400 hover:text-red-300 transition-colors"
-
-                aria-label="Dismiss error message"
-
-              >
-
-                <XCircle className="w-4 h-4" />
-
-              </button>
-
+            <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs flex items-center gap-3">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
-
           )}
-
-
-
-          {/* Success Message Banner */}
 
           {successMessage && (
-
-            <div
-
-              role="status"
-
-              aria-live="polite"
-
-              className="mt-5 p-3.5 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 text-xs text-emerald-500 flex items-start gap-3 animate-in fade-in"
-
-            >
-
-              <CheckCircle2 className="w-4 h-4 mt-0.5 flex-shrink-0" />
-
-              <div className="flex-1 text-left">
-
-                <p className="font-bold">Notice</p>
-
-                <p className="mt-0.5 opacity-90 leading-relaxed">{successMessage}</p>
-
-              </div>
-
-              <button
-
-                type="button"
-
-                onClick={() => setSuccessMessage(null)}
-
-                className="text-emerald-400 hover:text-emerald-300 transition-colors"
-
-                aria-label="Dismiss message"
-
-              >
-
-                <XCircle className="w-4 h-4" />
-
-              </button>
-
+            <div className="mb-6 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs flex items-center gap-3">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>{successMessage}</span>
             </div>
-
           )}
 
-
-
-          {/* VIEW 1: SIGN IN */}
-
+          {/* Mode-specific Forms */}
           {mode === "signin" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Sign in to CodeAtlas</h1>
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  AI-Powered Codebase Intelligence Platform
+                </p>
+              </div>
 
-            <div id="panel-signin" role="tabpanel" aria-labelledby="tab-signin" className="mt-6">
-              {/* Live Demo Banner for Static GitHub Pages */}
-              {isDemo && (
-                <div className="mb-6 p-4 rounded-2xl border border-[var(--primary)]/40 bg-[var(--primary)]/10 text-center animate-in fade-in">
-                  <div className="flex items-center justify-center gap-2 mb-1.5 text-sm font-bold text-[var(--primary)]">
-                    <Sparkles className="w-4 h-4" />
-                    <span>Interactive Live Demo</span>
-                  </div>
-                  <p className="text-xs text-[var(--text-secondary)] mb-3">
-                    Explore all 15+ CodeAtlas intelligence modules with pre-indexed sample repositories. Zero configuration required.
+              {/* OAuth Providers */}
+              <div className="space-y-3">
+                <GoogleSignInButton
+                  disabled={isSubmitting}
+                  isLoading={isSubmitting}
+                  onClick={handleGoogleSignInClick}
+                  onCredential={() => {}}
+                  onError={(err) => setErrorMessage(err)}
+                />
+
+                <GitHubSignInButton
+                  disabled={isSubmitting}
+                  isLoading={isSubmitting}
+                  onClick={handleGitHubSignInClick}
+                  redirectTarget={redirectTarget || "/dashboard"}
+                />
+
+                {!isFirebaseConfigured && (
+                  <p className="text-[11px] text-center text-[var(--text-muted)]">
+                    OAuth requires full backend or Firebase deployment.
                   </p>
+                )}
+              </div>
+
+              <div className="relative flex items-center justify-center my-4">
+                <div className="border-t border-[var(--border-color)] w-full" />
+                <span className="bg-[var(--bg-page)] px-3 text-[11px] font-mono uppercase text-[var(--text-muted)] tracking-wider absolute">
+                  or sign in with email
+                </span>
+              </div>
+
+              <form onSubmit={handleSignInSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="developer@example.com"
+                      className="w-full h-11 pl-10 pr-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                    />
+                    <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-[var(--text-primary)]">Password</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearMessages();
+                        setMode("forgot_password");
+                      }}
+                      className="text-xs text-[var(--primary)] hover:underline font-semibold"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full h-11 pl-10 pr-10 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                    />
+                    <Lock className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {isSubmitting ? <RotateCw className="w-4 h-4 animate-spin" /> : null}
+                  <span>Sign In</span>
+                </button>
+              </form>
+
+              <div className="text-center pt-2">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Don't have an account?{" "}
                   <button
                     type="button"
                     onClick={() => {
-                      if (typeof window !== "undefined") {
-                        try { localStorage.removeItem("codeatlas_demo_active_user"); } catch {}
-                      }
-                      router.push("/dashboard");
+                      clearMessages();
+                      setMode("register");
                     }}
-                    className="w-full h-11 rounded-full bg-[var(--primary)] text-white font-bold text-sm shadow-md hover:opacity-90 active:scale-[0.99] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="font-bold text-[var(--primary)] hover:underline"
                   >
-                    <span>Explore the live demo</span>
-                    <ArrowRight className="w-4 h-4" />
+                    Create Account
                   </button>
-                </div>
-              )}
-
-              {/* 1. Continue with Google & 2. Continue with GitHub */}
-
-              <div className="flex flex-col items-center gap-3">
-
-                <GoogleSignInButton
-
-                  onCredential={handleGoogleCredential}
-
-                  onError={handleGoogleError}
-
-                  disabled={isSubmitting || isDemo}
-
-                  isLoading={isSubmitting}
-
-                />
-
-                <GitHubSignInButton
-
-                  disabled={isSubmitting || isDemo}
-
-                  isLoading={isSubmitting}
-
-                  redirectTarget={redirectTarget || undefined}
-
-                />
-
-                {isDemo && (
-                  <p className="text-[11px] font-mono text-[var(--text-secondary)] text-center">
-                    Available in the full deployment
-                  </p>
-                )}
-
+                </p>
               </div>
-
-
-
-              {/* 4. OR divider */}
-
-              <div className="relative my-6">
-
-                <div className="absolute inset-0 flex items-center">
-
-                  <div className="w-full border-t border-[var(--border-color)]" />
-
-                </div>
-
-                <div className="relative flex justify-center text-[10px] uppercase font-mono font-bold">
-
-                  <span className="bg-[var(--bg-page)] px-3 text-[var(--text-secondary)]">
-
-                    or continue with
-
-                  </span>
-
-                </div>
-
-              </div>
-
-
-
-              {/* 5. Existing email login form */}
-
-              <form onSubmit={handleSignInSubmit} className="space-y-4">
-
-                {/* Email Address */}
-
-                <div>
-
-                  <label
-
-                    htmlFor="signin-email"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    Email Address
-
-                  </label>
-
-                  <div className="relative">
-
-                    <Mail className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="signin-email"
-
-                      type="email"
-
-                      required
-
-                      autoComplete="email"
-
-                      placeholder="alex@codeatlas.dev"
-
-                      value={email}
-
-                      onChange={(e) => setEmail(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                {/* Password */}
-
-                <div>
-
-                  <div className="flex items-center justify-between mb-1.5">
-
-                    <label
-
-                      htmlFor="signin-password"
-
-                      className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)]"
-
-                    >
-
-                      Password
-
-                    </label>
-
-                    <button
-
-                      type="button"
-
-                      onClick={() => {
-
-                        clearMessages();
-
-                        setMode("forgot_password");
-
-                      }}
-
-                      className="text-xs font-semibold text-[var(--primary)] hover:underline"
-
-                    >
-
-                      Forgot password?
-
-                    </button>
-
-                  </div>
-
-                  <div className="relative">
-
-                    <Lock className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="signin-password"
-
-                      type={showPassword ? "text" : "password"}
-
-                      required
-
-                      autoComplete="current-password"
-
-                      placeholder="••••••••••••"
-
-                      value={password}
-
-                      onChange={(e) => setPassword(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                    <button
-
-                      type="button"
-
-                      onClick={() => setShowPassword(!showPassword)}
-
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
-                    >
-
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-
-                    </button>
-
-                  </div>
-
-                </div>
-
-
-
-                {/* 6. Existing Continue Button */}
-
-                <button
-
-                  type="submit"
-
-                  disabled={isSubmitting || isDemo}
-
-                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-
-                >
-
-                  {isSubmitting ? (
-
-                    <>
-
-                      <RotateCw className="w-4 h-4 animate-spin" />
-
-                      <span>Signing in...</span>
-
-                    </>
-
-                  ) : (
-
-                    <span>Continue</span>
-
-                  )}
-
-                </button>
-
-              </form>
-
-
-
-              {/* 7. Create your account link */}
-
-              <p className="mt-5 text-center text-xs text-[var(--text-secondary)]">
-
-                Don&apos;t have an account?{" "}
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("register");
-
-                  }}
-
-                  className="font-bold text-[var(--primary)] hover:underline"
-
-                >
-
-                  Create your account
-
-                </button>
-
-              </p>
-
             </div>
-
           )}
-
-
-
-          {/* VIEW 2: CREATE ACCOUNT */}
 
           {mode === "register" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Create your account</h1>
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  Get full access to CodeAtlas code intelligence tools
+                </p>
+              </div>
 
-            <div id="panel-register" role="tabpanel" aria-labelledby="tab-register" className="mt-6">
-
-              {/* Social Registration */}
-
-              <div className="flex flex-col items-center gap-3">
-
+              {/* OAuth Providers for registration */}
+              <div className="space-y-3">
                 <GoogleSignInButton
-
-                  onCredential={handleGoogleCredential}
-
-                  onError={handleGoogleError}
-
-                  disabled={isSubmitting || isDemo}
-
+                  disabled={isSubmitting}
                   isLoading={isSubmitting}
-
+                  onClick={handleGoogleSignInClick}
+                  onCredential={() => {}}
+                  onError={(err) => setErrorMessage(err)}
                 />
 
                 <GitHubSignInButton
-
-                  disabled={isSubmitting || isDemo}
-
+                  disabled={isSubmitting}
                   isLoading={isSubmitting}
-
-                  redirectTarget={redirectTarget || undefined}
-
+                  onClick={handleGitHubSignInClick}
+                  redirectTarget={redirectTarget || "/dashboard"}
                 />
-
               </div>
 
-
-
-              {/* Divider */}
-
-              <div className="relative my-6">
-
-                <div className="absolute inset-0 flex items-center">
-
-                  <div className="w-full border-t border-[var(--border-color)]" />
-
-                </div>
-
-                <div className="relative flex justify-center text-[10px] uppercase font-mono font-bold">
-
-                  <span className="bg-[var(--bg-page)] px-3 text-[var(--text-secondary)]">
-
-                    or register with email
-
-                  </span>
-
-                </div>
-
+              <div className="relative flex items-center justify-center my-4">
+                <div className="border-t border-[var(--border-color)] w-full" />
+                <span className="bg-[var(--bg-page)] px-3 text-[11px] font-mono uppercase text-[var(--text-muted)] tracking-wider absolute">
+                  or sign up with email
+                </span>
               </div>
-
-
 
               <form onSubmit={handleRegisterSubmit} className="space-y-4">
-
-                {/* Full Name */}
-
                 <div>
-
-                  <label
-
-                    htmlFor="register-name"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
                     Full Name
-
                   </label>
-
                   <div className="relative">
-
-                    <User className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
                     <input
-
-                      id="register-name"
-
                       type="text"
-
                       required
-
-                      autoComplete="name"
-
-                      placeholder="Alex Mercer"
-
                       value={name}
-
                       onChange={(e) => setName(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
+                      placeholder="Jane Doe"
+                      className="w-full h-11 pl-10 pr-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
                     />
-
+                    <User className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
                   </div>
-
                 </div>
 
-
-
-                {/* Email Address */}
-
                 <div>
-
-                  <label
-
-                    htmlFor="register-email"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    Email Address
-
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Email address
                   </label>
-
                   <div className="relative">
-
-                    <Mail className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
                     <input
-
-                      id="register-email"
-
                       type="email"
-
                       required
-
-                      autoComplete="email"
-
-                      placeholder="alex@codeatlas.dev"
-
                       value={email}
-
                       onChange={(e) => setEmail(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
+                      placeholder="developer@example.com"
+                      className="w-full h-11 pl-10 pr-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
                     />
-
+                    <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
                   </div>
-
                 </div>
 
-
-
-                {/* Password */}
-
                 <div>
-
-                  <label
-
-                    htmlFor="register-password"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    Password
-
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Password (min 6 characters)
                   </label>
-
                   <div className="relative">
-
-                    <Lock className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
                     <input
-
-                      id="register-password"
-
                       type={showPassword ? "text" : "password"}
-
                       required
-
-                      autoComplete="new-password"
-
-                      placeholder="At least 8 characters"
-
                       value={password}
-
                       onChange={(e) => setPassword(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
+                      placeholder="••••••••"
+                      className="w-full h-11 pl-10 pr-10 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
                     />
-
+                    <Lock className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
                     <button
-
                       type="button"
-
                       onClick={() => setShowPassword(!showPassword)}
-
-                      aria-label={showPassword ? "Hide password" : "Show password"}
-
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
+                      className="absolute right-3.5 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     >
-
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-
                     </button>
-
                   </div>
-
                 </div>
-
-
-
-                {/* Confirm Password */}
 
                 <div>
-
-                  <label
-
-                    htmlFor="register-confirm-password"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
                     Confirm Password
-
                   </label>
-
                   <div className="relative">
-
-                    <Lock className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
                     <input
-
-                      id="register-confirm-password"
-
                       type={showConfirmPassword ? "text" : "password"}
-
                       required
-
-                      autoComplete="new-password"
-
-                      placeholder="Repeat your password"
-
                       value={confirmPassword}
-
                       onChange={(e) => setConfirmPassword(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
+                      placeholder="••••••••"
+                      className="w-full h-11 pl-10 pr-10 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
                     />
-
+                    <Lock className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
                     <button
-
                       type="button"
-
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-
-                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
+                      className="absolute right-3.5 top-3.5 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     >
-
-                      {showConfirmPassword ? (
-
-                        <EyeOff className="w-4 h-4" />
-
-                      ) : (
-
-                        <Eye className="w-4 h-4" />
-
-                      )}
-
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
-
                   </div>
-
                 </div>
 
-
-
-                {/* Terms checkbox */}
-
-                <div className="flex items-start gap-2 pt-1">
-
+                <div className="flex items-center gap-2 pt-1">
                   <input
-
-                    id="terms-checkbox"
-
                     type="checkbox"
-
+                    id="terms"
                     checked={acceptTerms}
-
                     onChange={(e) => setAcceptTerms(e.target.checked)}
-
-                    className="mt-0.5 rounded border-[var(--border-color)] text-[var(--primary)] focus:ring-[var(--primary)]"
-
+                    className="rounded border-[var(--border-color)]"
                   />
-
-                  <label htmlFor="terms-checkbox" className="text-xs text-[var(--text-secondary)]">
-
-                    I agree to the{" "}
-
-                    <Link href="/terms" className="underline hover:text-[var(--text-primary)]">
-
-                      Terms
-
-                    </Link>{" "}
-
-                    and acknowledge the{" "}
-
-                    <Link href="/privacy" className="underline hover:text-[var(--text-primary)]">
-
-                      Privacy Policy
-
-                    </Link>
-
-                    .
-
+                  <label htmlFor="terms" className="text-xs text-[var(--text-secondary)]">
+                    I agree to the Terms of Service and Privacy Policy
                   </label>
-
                 </div>
-
-
-
-                {/* Submit Register Button */}
 
                 <button
-
                   type="submit"
-
-                  disabled={isSubmitting || isDemo}
-
-                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-
+                  disabled={isSubmitting}
+                  className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                 >
-
-                  {isSubmitting ? (
-
-                    <>
-
-                      <RotateCw className="w-4 h-4 animate-spin" />
-
-                      <span>Creating Account...</span>
-
-                    </>
-
-                  ) : (
-
-                    <span>Create Account</span>
-
-                  )}
-
+                  {isSubmitting ? <RotateCw className="w-4 h-4 animate-spin" /> : null}
+                  <span>Create Account</span>
                 </button>
-
               </form>
 
-
-
-              {/* Link back to Sign In */}
-
-              <p className="mt-5 text-center text-xs text-[var(--text-secondary)]">
-
-                Already have an account?{" "}
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("signin");
-
-                  }}
-
-                  className="font-bold text-[var(--primary)] hover:underline"
-
-                >
-
-                  Sign in
-
-                </button>
-
-              </p>
-
+              <div className="text-center pt-2">
+                <p className="text-xs text-[var(--text-secondary)]">
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clearMessages();
+                      setMode("signin");
+                    }}
+                    className="font-bold text-[var(--primary)] hover:underline"
+                  >
+                    Sign In
+                  </button>
+                </p>
+              </div>
             </div>
-
           )}
 
-
-
-          {/* VIEW 3: VERIFY OTP */}
-
-          {mode === "verify_otp" && (
-
-            <div className="mt-6">
-
-              <form onSubmit={handleVerifyOtpSubmit} className="space-y-4">
-
-                <div className="text-center">
-
-                  <label className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-
-                    Enter 6-Digit Code
-
-                  </label>
-
-                  <OtpInput
-
-                    value={otpCode}
-
-                    onChange={setOtpCode}
-
-                    onComplete={() => {}}
-
-                    disabled={isSubmitting || isDemo}
-
-                    hasError={Boolean(errorMessage)}
-
-                  />
-
+          {/* Firebase Email Verification Screen */}
+          {mode === "verify_email_link" && (
+            <div className="space-y-6">
+              <div className="p-6 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-center space-y-4">
+                <div className="w-14 h-14 mx-auto rounded-full bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center">
+                  <Mail className="w-7 h-7" />
                 </div>
-
-
-
-                <button
-
-                  type="submit"
-
-                  disabled={isSubmitting || otpCode.length !== 6}
-
-                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-
-                >
-
-                  {isSubmitting ? (
-
-                    <>
-
-                      <RotateCw className="w-4 h-4 animate-spin" />
-
-                      <span>Verifying Code...</span>
-
-                    </>
-
-                  ) : (
-
-                    <span>Verify Email</span>
-
-                  )}
-
-                </button>
-
-              </form>
-
-
-
-              {/* Resend Code Section */}
-
-              <div className="mt-6 pt-4 border-t border-[var(--border-color)] text-center space-y-2">
-
-                <p className="text-xs text-[var(--text-secondary)]">
-
-                  Didn&apos;t receive the code? Check spam or resend.
-
+                <h2 className="text-xl font-bold">Check your inbox</h2>
+                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                  We sent a verification link to{" "}
+                  <span className="font-semibold text-[var(--text-primary)]">
+                    {maskedEmail || email || "your email address"}
+                  </span>
+                  .
+                  <br />
+                  <span className="text-xs text-[var(--text-muted)]">
+                    (Check your Spam or Junk folder too)
+                  </span>
                 </p>
 
-                <button
-
-                  type="button"
-
-                  disabled={resendCooldown > 0 || isSubmitting}
-
-                  onClick={handleResendOtp}
-
-                  className={`inline-flex items-center gap-1.5 text-xs font-bold transition-colors ${
-
-                    resendCooldown > 0 || isSubmitting
-
-                      ? "text-[var(--text-secondary)] opacity-60 cursor-not-allowed"
-
-                      : "text-[var(--primary)] hover:underline cursor-pointer"
-
-                  }`}
-
-                >
-
-                  <Clock className="w-3.5 h-3.5" />
-
-                  {resendCooldown > 0 ? (
-
-                    <span>Resend code in {resendCooldown}s</span>
-
-                  ) : (
-
-                    <span>Resend verification code</span>
-
-                  )}
-
-                </button>
-
-              </div>
-
-
-
-              {/* Return to Sign In */}
-
-              <div className="mt-4 text-center">
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("signin");
-
-                  }}
-
-                  className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-
-                >
-
-                  Wrong email? Return to sign in
-
-                </button>
-
-              </div>
-
-            </div>
-
-          )}
-
-
-
-          {/* VIEW 4: FORGOT PASSWORD */}
-
-          {mode === "forgot_password" && (
-
-            <div className="mt-6">
-
-              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
-
-                <div>
-
-                  <label
-
-                    htmlFor="forgot-email"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
+                <div className="pt-2 space-y-3">
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={handleCheckEmailVerified}
+                    className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
                   >
-
-                    Account Email
-
-                  </label>
-
-                  <div className="relative">
-
-                    <Mail className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="forgot-email"
-
-                      type="email"
-
-                      required
-
-                      autoComplete="email"
-
-                      placeholder="alex@codeatlas.dev"
-
-                      value={email}
-
-                      onChange={(e) => setEmail(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                <button
-
-                  type="submit"
-
-                  disabled={isSubmitting || isDemo}
-
-                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-
-                >
-
-                  {isSubmitting ? (
-
-                    <>
-
+                    {isSubmitting ? (
                       <RotateCw className="w-4 h-4 animate-spin" />
-
-                      <span>Sending Instructions...</span>
-
-                    </>
-
-                  ) : (
-
-                    <span>Send Reset Instructions</span>
-
-                  )}
-
-                </button>
-
-              </form>
-
-
-
-              {/* Action buttons */}
-
-              <div className="mt-6 pt-4 border-t border-[var(--border-color)] flex items-center justify-between text-xs">
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("signin");
-
-                  }}
-
-                  className="font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
-                >
-
-                  ← Return to sign in
-
-                </button>
-
-
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("reset_password");
-
-                  }}
-
-                  className="font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
-
-                >
-
-                  Have a code? Reset here <ArrowRight className="w-3.5 h-3.5" />
-
-                </button>
-
-              </div>
-
-            </div>
-
-          )}
-
-
-
-          {/* VIEW 5: RESET PASSWORD */}
-
-          {mode === "reset_password" && (
-
-            <div className="mt-6">
-
-              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
-
-                {/* Email Address */}
-
-                <div>
-
-                  <label
-
-                    htmlFor="reset-email"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    Email Address
-
-                  </label>
-
-                  <div className="relative">
-
-                    <Mail className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="reset-email"
-
-                      type="email"
-
-                      required
-
-                      autoComplete="email"
-
-                      placeholder="alex@codeatlas.dev"
-
-                      value={email}
-
-                      onChange={(e) => setEmail(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                {/* Recovery Code */}
-
-                <div>
-
-                  <label
-
-                    htmlFor="reset-token"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    6-Digit Recovery Code
-
-                  </label>
-
-                  <div className="relative">
-
-                    <KeyRound className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="reset-token"
-
-                      type="text"
-
-                      required
-
-                      maxLength={6}
-
-                      placeholder="123456"
-
-                      value={resetToken}
-
-                      onChange={(e) => setResetToken(e.target.value.replace(/\D/g, "").slice(0, 6))}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 font-mono text-center tracking-widest text-base font-bold rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                {/* New Password */}
-
-                <div>
-
-                  <label
-
-                    htmlFor="reset-new-password"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    New Password
-
-                  </label>
-
-                  <div className="relative">
-
-                    <Lock className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="reset-new-password"
-
-                      type={showNewPassword ? "text" : "password"}
-
-                      required
-
-                      autoComplete="new-password"
-
-                      placeholder="At least 8 characters"
-
-                      value={newPassword}
-
-                      onChange={(e) => setNewPassword(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
+                    ) : (
+                      <CheckCircle2 className="w-4 h-4" />
+                    )}
+                    <span>I've verified, continue</span>
+                  </button>
+
+                  <div className="flex items-center justify-between gap-3 pt-2">
                     <button
-
                       type="button"
-
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-
-                      aria-label={showNewPassword ? "Hide password" : "Show password"}
-
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-
+                      disabled={isSubmitting || resendCooldown > 0}
+                      onClick={handleResendVerificationEmail}
+                      className="text-xs font-semibold text-[var(--primary)] hover:underline disabled:opacity-50"
                     >
-
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-
+                      {resendCooldown > 0
+                        ? `Resend email (${resendCooldown}s)`
+                        : "Resend email"}
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        clearMessages();
+                        setMode("signin");
+                      }}
+                      className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      Back to Sign In
+                    </button>
                   </div>
-
                 </div>
-
-
-
-                {/* Confirm New Password */}
-
-                <div>
-
-                  <label
-
-                    htmlFor="reset-confirm-new-password"
-
-                    className="block text-xs font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5"
-
-                  >
-
-                    Confirm New Password
-
-                  </label>
-
-                  <div className="relative">
-
-                    <Lock className="w-4 h-4 text-[var(--text-secondary)] absolute left-3.5 top-1/2 -translate-y-1/2" />
-
-                    <input
-
-                      id="reset-confirm-new-password"
-
-                      type={showNewPassword ? "text" : "password"}
-
-                      required
-
-                      autoComplete="new-password"
-
-                      placeholder="Repeat new password"
-
-                      value={confirmNewPassword}
-
-                      onChange={(e) => setConfirmNewPassword(e.target.value)}
-
-                      disabled={isSubmitting || isDemo}
-
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-xs sm:text-sm text-[var(--text-primary)] placeholder-[var(--text-secondary)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--primary)] transition-all"
-
-                    />
-
-                  </div>
-
-                </div>
-
-
-
-                <button
-
-                  type="submit"
-
-                  disabled={isSubmitting || isDemo}
-
-                  className="w-full py-2.5 px-4 rounded-xl bg-[var(--primary)] text-white text-xs sm:text-sm font-bold shadow-md hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-
-                >
-
-                  {isSubmitting ? (
-
-                    <>
-
-                      <RotateCw className="w-4 h-4 animate-spin" />
-
-                      <span>Updating Password...</span>
-
-                    </>
-
-                  ) : (
-
-                    <span>Update Password</span>
-
-                  )}
-
-                </button>
-
-              </form>
-
-
-
-              <div className="mt-6 text-center">
-
-                <button
-
-                  type="button"
-
-                  onClick={() => {
-
-                    clearMessages();
-
-                    setMode("signin");
-
-                  }}
-
-                  className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-
-                >
-
-                  ← Return to sign in
-
-                </button>
-
               </div>
-
             </div>
-
           )}
 
-
-
-          {/* Privacy & GitHub Notice */}
-
-          <div className="mt-8 space-y-3">
-
-            <p className="text-xs font-medium text-[var(--text-secondary)] leading-relaxed">
-
-              GitHub is connected separately after sign-in. By continuing you accept the{" "}
-
-              <Link href="/terms" className="underline hover:text-[var(--text-primary)]">
-
-                Terms
-
-              </Link>{" "}
-
-              and{" "}
-
-              <Link href="/privacy" className="underline hover:text-[var(--text-primary)]">
-
-                Privacy policy
-
-              </Link>.
-
-            </p>
-
-
-
-            <div className="flex items-center gap-2 pt-1 text-xs font-semibold text-[var(--text-secondary)]">
-
-              <ShieldCheck className="w-4 h-4 text-[var(--primary)]" />
-
-              <span>Zero training on private repositories</span>
-
-            </div>
-
-          </div>
-
-        </div>
-
-
-
-        {/* Footer info */}
-
-        <div className="text-xs font-medium text-[var(--text-secondary)] pt-4">
-
-          &copy; {new Date().getFullYear()} CodeAtlas Platform Inc.
-
-        </div>
-
-      </div>
-
-
-
-      {/* Right Decorative Showcase Panel */}
-
-      <div
-
-        className={`hidden lg:flex flex-col items-center justify-center p-12 relative overflow-hidden transition-colors ${
-
-          isDark
-
-            ? "bg-[#070A12] border-l border-[#242B39]"
-
-            : "bg-gradient-to-br from-[#6C4DFF] to-[#4B31D6] text-white"
-
-        }`}
-
-      >
-
-        {isDark ? (
-
-          // Dark Theme Showcase
-
-          <div className="w-full max-w-md space-y-6">
-
-            <div className="relative">
-
-              {/* Subtle ambient cyan glow */}
-
-              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-[#29D3C2]/20 to-[#8B7CFF]/20 blur-xl opacity-70" />
-
-
-
-              <div className="relative rounded-2xl bg-[#0D111B] border border-[#242B39] p-6 shadow-2xl">
-
-                <div className="flex items-center justify-between pb-4 border-b border-[#242B39]/80">
-
-                  <div className="flex items-center gap-2">
-
-                    <span className="w-3 h-3 rounded-full bg-[#FF5A5F]/80" />
-
-                    <span className="w-3 h-3 rounded-full bg-[#FFC53D]/80" />
-
-                    <span className="w-3 h-3 rounded-full bg-[#2FD6A0]/80" />
-
-                    <span className="ml-2 font-mono text-xs text-[#9AA4B5]">auth.py</span>
-
-                  </div>
-
-                  <span className="font-mono text-[10px] text-[#29D3C2] bg-[#29D3C2]/10 px-2 py-0.5 rounded">
-
-                    Python
-
-                  </span>
-
-                </div>
-
-
-
-                <div className="pt-4 font-mono text-sm leading-7">
-
-                  <div className="text-[#9AA4B5]">
-
-                    <span className="inline-block w-8 text-right pr-4 text-[#9AA4B5]/50">12</span>
-
-                    <span className="text-[#8B7CFF]">def</span> <span className="text-[#29D3C2]">login</span>(email, pw):
-
-                  </div>
-
-                  <div className="text-[#9AA4B5]">
-
-                    <span className="inline-block w-8 text-right pr-4 text-[#9AA4B5]/50">13</span>
-
-                    {"    "}user = db.<span className="text-[#F3C969]">find</span>(email)
-
-                  </div>
-
-                  <div className="text-[#9AA4B5]">
-
-                    <span className="inline-block w-8 text-right pr-4 text-[#9AA4B5]/50">14</span>
-
-                    {"    "}<span className="text-[#8B7CFF]">return</span> <span className="text-[#29D3C2]">verify</span>(user, pw)
-
-                  </div>
-
-                </div>
-
-
-
-                <div className="mt-4 pt-3 border-t border-[#242B39]/60 flex items-center gap-2 text-xs font-mono text-[#29D3C2]">
-
-                  <span>↳</span>
-
-                  <span className="text-[#9AA4B5]">used in 3 files · 2 tests</span>
-
-                </div>
-
+          {/* Legacy OTP Verification Screen (Fallback for backend mode) */}
+          {mode === "verify_otp" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Verify your email</h1>
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  Enter the 6-digit verification code sent to {maskedEmail || email}
+                </p>
               </div>
 
+              <form onSubmit={handleVerifyOtpSubmit} className="space-y-6">
+                <div className="flex justify-center">
+                  <OtpInput
+                    value={otpCode}
+                    onChange={setOtpCode}
+                    onComplete={() => handleVerifyOtpSubmit()}
+                    disabled={isSubmitting}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || otpCode.length !== 6}
+                  className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {isSubmitting ? <RotateCw className="w-4 h-4 animate-spin" /> : null}
+                  <span>Verify Code & Continue</span>
+                </button>
+              </form>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearMessages();
+                    setMode("signin");
+                  }}
+                  className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Back to Sign In
+                </button>
+              </div>
             </div>
+          )}
 
-
-
-            <div className="rounded-xl bg-[#0D111B]/80 border border-[#242B39] p-4 text-xs font-mono text-[#9AA4B5]">
-
-              <div className="flex items-center gap-2 text-[#29D3C2] font-semibold mb-1">
-
-                <Sparkles className="w-3.5 h-3.5" />
-
-                <span>AI Receipt Confirmed</span>
-
+          {mode === "forgot_password" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Reset password</h1>
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  Enter your registered email address to receive password reset instructions
+                </p>
               </div>
 
-              Trace links verified in <code className="text-[#F3F5FA]">POST /auth</code> & <code className="text-[#F3F5FA]">test_auth.py:7</code>
+              <form onSubmit={handleForgotPasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Email address
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="developer@example.com"
+                      className="w-full h-11 pl-10 pr-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                    />
+                    <Mail className="w-4 h-4 text-[var(--text-muted)] absolute left-3.5 top-3.5" />
+                  </div>
+                </div>
 
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {isSubmitting ? <RotateCw className="w-4 h-4 animate-spin" /> : null}
+                  <span>Send Reset Link</span>
+                </button>
+              </form>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearMessages();
+                    setMode("signin");
+                  }}
+                  className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Back to Sign In
+                </button>
+              </div>
             </div>
+          )}
 
+          {mode === "reset_password" && (
+            <div className="space-y-6">
+              <div>
+                <h1 className="text-3xl font-extrabold tracking-tight">Set new password</h1>
+                <p className="text-xs text-[var(--text-secondary)] mt-1.5">
+                  Create a new secure password for your CodeAtlas account
+                </p>
+              </div>
+
+              <form onSubmit={handleResetPasswordSubmit} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Recovery Code / Token
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={resetToken}
+                    onChange={(e) => setResetToken(e.target.value)}
+                    placeholder="Reset token"
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    New Password
+                  </label>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-[var(--text-primary)] mb-1.5">
+                    Confirm New Password
+                  </label>
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    required
+                    value={confirmNewPassword}
+                    onChange={(e) => setConfirmNewPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full h-11 px-3.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] outline-none focus:border-[var(--primary)] transition-all"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full h-11 rounded-xl bg-[var(--primary)] text-white font-bold text-sm hover:bg-[var(--primary-hover)] transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50"
+                >
+                  {isSubmitting ? <RotateCw className="w-4 h-4 animate-spin" /> : null}
+                  <span>Update Password</span>
+                </button>
+              </form>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearMessages();
+                    setMode("signin");
+                  }}
+                  className="text-xs font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="pt-6 border-t border-[var(--border-color)] flex items-center justify-between text-xs text-[var(--text-secondary)]">
+          <p>© {new Date().getFullYear()} CodeAtlas Intelligence</p>
+          <div className="flex gap-4">
+            <Link href="/privacy" className="hover:underline">
+              Privacy
+            </Link>
+            <Link href="/terms" className="hover:underline">
+              Terms
+            </Link>
           </div>
-
-        ) : (
-
-          // Light Theme Showcase
-
-          <div className="w-full max-w-lg text-center space-y-6">
-
-            <div className="bg-white/10 backdrop-blur-md rounded-3xl p-6 border border-white/20 shadow-2xl">
-
-              <City className="w-full" forceMode="light" />
-
-            </div>
-
-            <div className="text-white/90">
-
-              <h3 className="text-xl font-bold">Your repository, mapped in real time.</h3>
-
-              <p className="mt-1 text-sm text-white/70">
-
-                Walk through codebase architecture like walking through a city.
-
-              </p>
-
-            </div>
-
-          </div>
-
-        )}
-
+        </div>
       </div>
 
+      {/* Right Visualization Hero Panel */}
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-[var(--bg-surface)] border-l border-[var(--border-color)] relative overflow-hidden">
+        <div className="relative z-10 max-w-lg">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-semibold bg-[var(--primary)]/10 text-[var(--primary)] border border-[var(--primary)]/20 mb-4">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Zero-Trust Architectural Intelligence
+          </span>
+          <h2 className="text-3xl font-extrabold tracking-tight leading-tight">
+            Explore and comprehend any codebase in minutes.
+          </h2>
+          <p className="text-sm text-[var(--text-secondary)] mt-2 leading-relaxed">
+            Multi-repo AST graph modeling, AI-assisted debugging, automated PR reviews, and change impact prediction.
+          </p>
+        </div>
+
+        <div className="my-auto py-8">
+          <City />
+        </div>
+
+        <div className="relative z-10 text-xs text-[var(--text-muted)] font-mono">
+          CodeAtlas Engine v2.4 • Client-Side Static Architecture
+        </div>
+      </div>
     </div>
-
   );
-
 }
 
-
-
-export default function Login() {
-
+export default function LoginPage() {
   return (
-
-    <Suspense fallback={<div className="min-h-screen bg-[var(--bg-page)]" />}>
-
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen items-center justify-center bg-[var(--bg-page)] text-[var(--text-primary)]">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--primary)] border-t-transparent" />
+        </div>
+      }
+    >
       <LoginFormContent />
-
     </Suspense>
-
   );
-
 }
