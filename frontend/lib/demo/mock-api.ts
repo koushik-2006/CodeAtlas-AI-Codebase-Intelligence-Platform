@@ -4,6 +4,7 @@ import { SAMPLE_REPOSITORIES_DATA } from "@/lib/constants";
 import { getStore as getCentralStore, saveStore as saveCentralStore, resetStore as resetCentralStore } from "./store";
 import { SAMPLE_PROJECT_TREE, SAMPLE_PROJECT_CODE } from "@/lib/sample-repository-files";
 import { DEMO_REPOSITORY_INFO, DEMO_TRACE_STEPS, DEMO_GROUNDED_QUERIES, DEMO_CHANGE_IMPACT, DEMO_SYMBOL_RESOLUTION } from "./demo-data";
+import { analyzeMultiRepo, calculateCrossRepoImpact, executeUnifiedSearch } from "./multi-repo-analyzer";
 
 /**
  * Checks whether the application is running in static demo mode.
@@ -2145,154 +2146,208 @@ export async function handleMockRequest(
   // 9. MULTI-REPO INTELLIGENCE
   // ---------------------------------------------------------------------------
   if (cleanPath === "/api/multi-repo/repositories") {
-    return {
-      success: true,
-      data: {
-        repositories: store.repositories.slice(0, 4).map((r) => ({
-          id: r.id,
-          name: r.name,
-          owner: r.owner,
-          language: r.language,
-          symbolCount: r.symbolCount,
-          fileCount: r.fileCount,
-          lastAnalyzed: r.lastAnalyzed,
-          status: r.status,
-        })),
-      },
-      repositories: store.repositories.slice(0, 4),
-      timestamp,
-    };
-  }
+    const wsId = searchParams.get("workspaceId") || (store as any).activeWorkspaceId || "ws_team_demo";
+    const wsRepoLinks = store.workspaceRepositories?.[wsId] || [];
+    const linkedRepoIds = wsRepoLinks.map((r: any) => r.repositoryId);
+    
+    const repoList = (linkedRepoIds.length > 0
+      ? store.repositories.filter((r: any) => linkedRepoIds.includes(r.id))
+      : store.repositories
+    ).map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      owner: r.owner,
+      description: r.description,
+      language: r.language,
+      languages: r.languages || [r.language],
+      branch: r.branch || "main",
+      revision: r.revision || "main",
+      status: r.status || "ready",
+      progress: r.progress ?? 100,
+      isStale: Boolean(r.isStale),
+      symbolCount: r.symbolCount || 24,
+      fileCount: r.fileCount || 6,
+      loc: r.loc || 2400,
+      lastIndexed: r.lastIndexed || "Just now",
+      lastAnalyzed: r.lastAnalyzed || "Just now",
+      url: r.url || "",
+      workspaceId: wsId,
+    }));
 
-  if (cleanPath === "/api/multi-repo/search") {
-    const q = searchParams.get("q") || "validateEmail";
-    const searchItems: any[] = [
-      {
-        id: "res-1",
-        repositoryId: "sample-project",
-        repositoryName: "demo-auth-service",
-        revision: "a8f7b2c",
-        title: "validateEmail",
-        subtitle: "src/utils/validation.ts",
-        category: "symbol",
-        filePath: "src/utils/validation.ts",
-        line: 4,
-        snippet: "export function validateEmail(email: string): boolean",
-        matchType: "exact_symbol",
-        badge: "TypeScript",
-        href: "/repositories/sample-project?file=src/utils/validation.ts&line=4",
-      },
-      {
-        id: "res-2",
-        repositoryId: "shared-core-lib",
-        repositoryName: "shared-core-lib",
-        revision: "e7d1a49",
-        title: "validateEmail",
-        subtitle: "src/validators.ts",
-        category: "symbol",
-        filePath: "src/validators.ts",
-        line: 12,
-        snippet: "export const validateEmail = (val: string) => /.../.test(val)",
-        matchType: "exact_symbol",
-        badge: "TypeScript",
-        href: "/repositories/shared-core-lib?file=src/validators.ts&line=12",
-      },
-    ];
-    const groupedByRepo = {
-      "sample-project": {
-        repoName: "demo-auth-service",
-        count: 1,
-        results: [searchItems[0]],
-      },
-      "shared-core-lib": {
-        repoName: "shared-core-lib",
-        count: 1,
-        results: [searchItems[1]],
-      },
-    };
     return {
       success: true,
-      data: {
-        query: q,
-        total: searchItems.length,
-        results: searchItems,
-        groupedByRepo,
-        groupedByCategory: { symbol: searchItems.length },
-        categories: [{ category: "symbol", label: "Symbols", count: searchItems.length }],
-        limit: 20,
-        offset: 0,
-        searchMethod: "exact_and_ast_index",
-      },
+      data: repoList,
+      repositories: repoList,
       timestamp,
     };
   }
 
   if (cleanPath === "/api/multi-repo/dependencies") {
+    const reposParam = searchParams.get("repos");
+    const targetRepoIds = reposParam ? reposParam.split(",").filter(Boolean) : store.repositories.map((r: any) => r.id);
+    const analysis = analyzeMultiRepo(targetRepoIds, store as any);
     return {
       success: true,
-      data: {
-        nodes: [
-          { id: "repo-sample", label: "demo-auth-service", type: "repository" },
-          { id: "repo-shared", label: "shared-core-lib", type: "repository" },
-          { id: "repo-payment", label: "payment-service", type: "repository" },
-        ],
-        edges: [
-          { source: "repo-sample", target: "repo-shared", label: "imports @acme/shared-utils" },
-          { source: "repo-payment", target: "repo-shared", label: "imports @acme/shared-utils" },
-        ],
-      },
+      data: analysis.graph,
+      timestamp,
+    };
+  }
+
+  if (cleanPath === "/api/multi-repo/shared-libraries") {
+    const reposParam = searchParams.get("repos");
+    const targetRepoIds = reposParam ? reposParam.split(",").filter(Boolean) : store.repositories.map((r: any) => r.id);
+    const analysis = analyzeMultiRepo(targetRepoIds, store as any);
+    return {
+      success: true,
+      data: analysis.sharedLibraries,
       timestamp,
     };
   }
 
   if (cleanPath === "/api/multi-repo/duplicates") {
+    const reposParam = searchParams.get("repos");
+    const targetRepoIds = reposParam ? reposParam.split(",").filter(Boolean) : store.repositories.map((r: any) => r.id);
+    const analysis = analyzeMultiRepo(targetRepoIds, store as any);
     return {
       success: true,
-      data: [
-        {
-          symbolName: "validateEmail",
-          similarity: 0.92,
-          occurrences: [
-            { repositoryId: "sample-project", file: "src/utils/validation.ts", line: 4 },
-            { repositoryId: "shared-core-lib", file: "src/validators.ts", line: 12 },
-          ],
-          suggestion: "Consolidate duplicate validateEmail into @acme/shared-utils library.",
-        },
-      ],
+      data: analysis.duplicateCandidates,
       timestamp,
     };
   }
 
   if (cleanPath === "/api/multi-repo/services") {
+    const reposParam = searchParams.get("repos");
+    const targetRepoIds = reposParam ? reposParam.split(",").filter(Boolean) : store.repositories.map((r: any) => r.id);
+    const analysis = analyzeMultiRepo(targetRepoIds, store as any);
     return {
       success: true,
-      data: [
-        { name: "POST /auth", repository: "demo-auth-service", file: "src/services/auth.ts", line: 18, consumers: ["payment-service", "frontend-spa"] },
-      ],
+      data: analysis.endpoints,
+      timestamp,
+    };
+  }
+
+  if (cleanPath === "/api/multi-repo/impact") {
+    const sourceRepoId = body?.sourceRepoId || searchParams.get("sourceRepoId") || "shared-core-lib";
+    const componentFile = body?.changedComponent?.file || searchParams.get("file") || "src/validators.ts";
+    const componentName = body?.changedComponent?.name || searchParams.get("symbol") || "validateEmail";
+    const isBreaking = body?.changedComponent?.isBreaking ?? true;
+    const targetRepoIds = body?.targetRepoIds || store.repositories.map((r: any) => r.id);
+
+    const report = calculateCrossRepoImpact(sourceRepoId, componentFile, componentName, isBreaking, targetRepoIds, store as any);
+    return {
+      success: true,
+      data: report,
+      timestamp,
+    };
+  }
+
+  if (cleanPath === "/api/multi-repo/search") {
+    const q = searchParams.get("q") || "";
+    const cat = (searchParams.get("category") || "all") as any;
+    const exact = searchParams.get("exact") === "true";
+    const reposParam = searchParams.get("repos");
+    const targetRepoIds = reposParam ? reposParam.split(",").filter(Boolean) : store.repositories.map((r: any) => r.id);
+
+    const results = executeUnifiedSearch(q, cat, exact, targetRepoIds, store as any);
+    return {
+      success: true,
+      data: results,
       timestamp,
     };
   }
 
   if (cleanPath === "/api/multi-repo/technology-insights") {
+    const repos = store.repositories || [];
+    const total = repos.length;
+    const indexed = repos.filter((r: any) => r.status === "ready" || r.isIndexed).length;
+    const stale = repos.filter((r: any) => r.isStale).length;
+    const allRepoIds = repos.map((r: any) => r.id);
+    const analysis = analyzeMultiRepo(allRepoIds, store as any);
+
+    const langCounts: Record<string, number> = {};
+    repos.forEach((r: any) => {
+      const l = r.language || "TypeScript";
+      langCounts[l] = (langCounts[l] || 0) + 1;
+    });
+
+    const languages = Object.entries(langCounts).map(([name, count]) => ({
+      name,
+      repoCount: count,
+      percentage: Math.round((count / (total || 1)) * 100),
+    }));
+
+    const topDependencies = analysis.sharedLibraries.slice(0, 6).map((lib: any) => ({
+      name: lib.name,
+      repoCount: lib.usageCount,
+      isInternal: lib.name.startsWith("@acme/"),
+      versions: lib.usages.map((u: any) => u.version),
+    }));
+
     return {
       success: true,
       data: {
-        languages: [{ name: "TypeScript", count: 3, percentage: 75 }, { name: "Python", count: 1, percentage: 25 }],
-        frameworks: ["Next.js", "Express", "Jest", "FastAPI"],
-        outdatedDependencies: 2,
+        totalRepositories: total,
+        indexedRepositories: indexed,
+        staleRepositories: stale,
+        indexingCoveragePercentage: Math.round((indexed / (total || 1)) * 100),
+        languages,
+        topDependencies,
+        internalLibrariesCount: analysis.graph.stats.internalLibraries,
+        detectedServiceConnections: analysis.graph.stats.serviceIntegrations,
+        duplicateCandidateCount: analysis.duplicateCandidates.length,
+        methodologyNotice: "Cross-repo metrics compiled from AST symbol definitions, HTTP route listeners, and verified package manifests.",
       },
       timestamp,
     };
   }
 
   if (cleanPath === "/api/multi-repo/query") {
-    await delay(500);
+    await delay(350);
     return {
       success: true,
-      answer: "The shared authentication contract across repositories is defined in `demo-auth-service` via `POST /auth`. Both `payment-service` and client SPAs consume this endpoint with Bearer JWT tokens.",
-      citations: [
-        { repositoryName: "demo-auth-service", file: "src/services/auth.ts", line: 18 },
-      ],
+      data: {
+        answer: "Analysis across authorized repositories shows that shared-core-lib serves as the central utility foundation (@acme/shared-utils), consumed by payment-service and ecommerce-platform. Authentication credentials and tokens are issued by auth-service via POST /token and consumed by client SPAs and checkout services.",
+        repositoryIds: store.repositories.map((r: any) => r.id),
+        citations: [
+          {
+            repositoryId: "shared-core-lib",
+            repositoryName: "shared-core-lib",
+            revision: "main",
+            filePath: "src/validators.ts",
+            startLine: 1,
+            endLine: 8,
+            snippet: "export function validateEmail(val: string): boolean",
+            symbolName: "validateEmail",
+          },
+          {
+            repositoryId: "auth-service",
+            repositoryName: "auth-service",
+            revision: "main",
+            filePath: "main.go",
+            startLine: 14,
+            endLine: 16,
+            snippet: 'r.HandleFunc("/token", handleTokenAuth).Methods("POST")',
+            symbolName: "handleTokenAuth",
+          },
+        ],
+        confirmedFacts: [
+          "Payment-service depends on @acme/shared-utils v1.4.0",
+          "Demo-auth-service has a version drift on @acme/shared-utils v1.2.0",
+          "Auth-service exposes POST /token and GET /userinfo endpoints",
+        ],
+        inferredExplanations: [
+          "Consolidating validateEmail eliminates redundant regular expression checks across payment and authentication microservices.",
+        ],
+        crossRepoConnections: [
+          "payment-service -> shared-core-lib (npm package dependency)",
+          "ecommerce-platform -> auth-service (HTTP API invocation)",
+        ],
+        unavailableContext: [],
+        confidence: "supported",
+        limitations: ["Analysis reflects repositories in the current authorized workspace."],
+        isConfigured: true,
+        provider: "Gemini 1.5 Pro (Grounded)",
+      },
       timestamp,
     };
   }

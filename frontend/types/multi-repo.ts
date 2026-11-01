@@ -10,6 +10,8 @@ export interface MultiRepoSummary {
   languages: string[];
   branch: string;
   revision: string;
+    healthScore?: number;
+    loc?: number;
   status: RepositoryFreshness;
   progress: number;
   lastIndexed: string;
@@ -110,6 +112,8 @@ export interface CrossRepoDependencyGraph {
     description: string;
     branch: string;
     revision: string;
+    healthScore?: number;
+    loc?: number;
   }>;
   edges: CrossRepoRelationship[];
   stats: {

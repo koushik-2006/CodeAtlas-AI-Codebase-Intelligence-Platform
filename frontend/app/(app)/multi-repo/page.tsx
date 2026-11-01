@@ -1,355 +1,467 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Layers,
-  Search,
   GitFork,
-  Sparkles,
+  Package,
   Repeat,
+  AlertTriangle,
   Globe,
   GitBranch,
-  PieChart,
+  Search,
 } from "lucide-react";
 import { MultiRepoHeader } from "@/components/multi-repo/MultiRepoHeader";
-import { CrossRepoSearchPanel } from "@/components/multi-repo/CrossRepoSearchPanel";
-import { CrossRepoDependencyVisualizer } from "@/components/multi-repo/CrossRepoDependencyVisualizer";
-import { CrossRepoQAAssistant } from "@/components/multi-repo/CrossRepoQAAssistant";
-import { DuplicateCodeInspector } from "@/components/multi-repo/DuplicateCodeInspector";
-import { SharedAPICatalog } from "@/components/multi-repo/SharedAPICatalog";
-import { CrossRepoImpactAnalyzer } from "@/components/multi-repo/CrossRepoImpactAnalyzer";
-import { TechnologyInsightsView } from "@/components/multi-repo/TechnologyInsightsView";
-import { apiClient } from "@/services/api-client";
+import { MultiRepoKPIRow, MultiRepoTab } from "@/components/multi-repo/MultiRepoKPIRow";
+import { DependencyMapTab } from "@/components/multi-repo/DependencyMapTab";
+import { SharedLibrariesTab } from "@/components/multi-repo/SharedLibrariesTab";
+import { DuplicateCodeTab } from "@/components/multi-repo/DuplicateCodeTab";
+import { APIContractsTab } from "@/components/multi-repo/APIContractsTab";
+import { CrossRepoImpactTab } from "@/components/multi-repo/CrossRepoImpactTab";
+import { UnifiedSearchTab } from "@/components/multi-repo/UnifiedSearchTab";
+import {
+  getStore,
+  saveStore,
+  updateRepositoryFile,
+  addRefactoringProposal,
+  logActivity,
+  getCachedMultiRepoAnalysis,
+  cacheMultiRepoAnalysis,
+} from "@/lib/demo/store";
+import {
+  analyzeMultiRepo,
+  calculateCrossRepoImpact,
+  executeUnifiedSearch,
+  MultiRepoAnalysisResult,
+  SharedLibraryItem,
+} from "@/lib/demo/multi-repo-analyzer";
 import {
   MultiRepoSummary,
+  DuplicateCandidate,
+  CrossRepoImpactReport,
   CrossRepoSearchResponse,
   CrossRepoEntityType,
-  CrossRepoDependencyGraph,
-  CrossRepoAnswerResponse,
-  DuplicateCandidate,
-  SharedServiceEndpoint,
-  CrossRepoImpactReport,
-  TechnologyInsightsSummary,
 } from "@/types/multi-repo";
 
 export default function MultiRepoPage() {
-  const [activeTab, setActiveTab] = useState<
-    "search" | "dependencies" | "assistant" | "duplicates" | "services" | "impact" | "insights"
-  >("search");
+  const [activeTab, setActiveTab] = useState<MultiRepoTab>("dependencies");
+  const [showConflictsOnly, setShowConflictsOnly] = useState<boolean>(false);
 
+  // Store data
+  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string>("ws_team_demo");
   const [repositories, setRepositories] = useState<MultiRepoSummary[]>([]);
   const [selectedRepoIds, setSelectedRepoIds] = useState<string[]>([]);
-  const [isLoadingRepos, setIsLoadingRepos] = useState<boolean>(true);
 
-  // Search state
+  // Analysis result
+  const [analysisResult, setAnalysisResult] = useState<MultiRepoAnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
+  const [analysisProgress, setAnalysisProgress] = useState<number>(100);
+
+  // Unified Search State
   const [searchQuery, setSearchQuery] = useState<string>("validateEmail");
   const [searchResults, setSearchResults] = useState<CrossRepoSearchResponse | null>(null);
   const [isSearching, setIsSearching] = useState<boolean>(false);
 
-  // Dependency Graph state
-  const [dependencyGraph, setDependencyGraph] = useState<CrossRepoDependencyGraph | null>(null);
-  const [isLoadingGraph, setIsLoadingGraph] = useState<boolean>(false);
+  // Toast feedback state
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "info" } | null>(null);
 
-  // Duplicates state
-  const [duplicates, setDuplicates] = useState<DuplicateCandidate[]>([]);
-  const [isLoadingDuplicates, setIsLoadingDuplicates] = useState<boolean>(false);
-
-  // Services state
-  const [endpoints, setEndpoints] = useState<SharedServiceEndpoint[]>([]);
-  const [isLoadingEndpoints, setIsLoadingEndpoints] = useState<boolean>(false);
-
-  // Insights state
-  const [insights, setInsights] = useState<TechnologyInsightsSummary | null>(null);
-  const [isLoadingInsights, setIsLoadingInsights] = useState<boolean>(false);
-
-  // 1. Initial Load of Authorized Repositories
-  const loadRepositories = async () => {
-    setIsLoadingRepos(true);
-    try {
-      const res = await apiClient.get<any>("/multi-repo/repositories");
-      const json = res.data || {};
-      const repoList = Array.isArray(json) ? json : json.data || [];
-      if (res.success && Array.isArray(repoList)) {
-        setRepositories(repoList);
-        // Default select all authorized repositories
-        const allIds = repoList.map((r: MultiRepoSummary) => r.id);
-        setSelectedRepoIds(allIds);
-
-        // Run initial default search across selected repositories
-        executeSearch("validateEmail", "all", false, allIds);
-      }
-    } catch (err) {
-      console.warn("Failed to load repositories:", err);
-    } finally {
-      setIsLoadingRepos(false);
-    }
+  const showToast = (text: string, type: "success" | "info" = "success") => {
+    setToastMessage({ text, type });
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  useEffect(() => {
-    loadRepositories();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // 1. Initial Load of Workspaces and Repositories from Store
+  const loadInitialData = useCallback(() => {
+    const store = getStore();
+    const wsList = store.workspaces || [];
+    setWorkspaces(wsList);
+
+    const activeWs = store.activeWorkspaceId || wsList[0]?.id || "ws_team_demo";
+    setActiveWorkspaceId(activeWs);
+
+    // Get linked repos for this workspace, or fallback to all repos
+    const linkedLinks = store.workspaceRepositories?.[activeWs] || [];
+    const linkedIds = linkedLinks.map((l: any) => l.repositoryId);
+    const allRepos = (store.repositories || []).map((r: any) => ({
+      ...r,
+      isStale: Boolean(r.isStale),
+      status: r.status || "ready",
+      symbolCount: r.symbolCount || 24,
+      fileCount: r.fileCount || 6,
+      loc: r.loc || 2400,
+    }));
+
+    const availableRepos = linkedIds.length > 0
+      ? allRepos.filter((r) => linkedIds.includes(r.id))
+      : allRepos;
+
+    setRepositories(availableRepos);
+
+    // Select all available repositories by default
+    const initialSelectedIds = availableRepos.map((r) => r.id);
+    setSelectedRepoIds(initialSelectedIds);
+
+    // Check cached analysis or run fresh
+    const cached = getCachedMultiRepoAnalysis();
+    if (cached && cached.selectedRepoIds && cached.selectedRepoIds.length === initialSelectedIds.length) {
+      setAnalysisResult(cached);
+    } else {
+      const result = analyzeMultiRepo(initialSelectedIds, store);
+      setAnalysisResult(result);
+      cacheMultiRepoAnalysis(result);
+    }
+
+    // Run initial search
+    const initialSearch = executeUnifiedSearch("validateEmail", "all", false, initialSelectedIds, store);
+    setSearchResults(initialSearch);
   }, []);
 
-  // 2. Cross-Repo Search Execution
-  const executeSearch = async (
-    q: string,
-    category: CrossRepoEntityType = "all",
-    exact: boolean = false,
-    overrideRepoIds?: string[]
-  ) => {
-    if (!q.trim()) return;
-    setIsSearching(true);
-    try {
-      const targetIds = overrideRepoIds || selectedRepoIds;
-      const params: Record<string, string> = {
-        q,
-        category,
-      };
-      if (exact) params["exact"] = "true";
-      if (targetIds.length > 0) params["repos"] = targetIds.join(",");
-
-      const res = await apiClient.get<any>("/multi-repo/search", { params });
-      const json = res.data || {};
-      if (res.success) {
-        setSearchResults(json.data || json);
-      }
-    } catch (err) {
-      console.warn("Search failed:", err);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  // 3. Load Dependency Graph
-  const loadDependencyGraph = async () => {
-    setIsLoadingGraph(true);
-    try {
-      const params: Record<string, string> = {};
-      if (selectedRepoIds.length > 0) params["repos"] = selectedRepoIds.join(",");
-
-      const res = await apiClient.get<any>("/multi-repo/dependencies", { params });
-      const json = res.data || {};
-      if (res.success) {
-        setDependencyGraph(json.data || json);
-      }
-    } catch (err) {
-      console.warn("Failed to load dependency graph:", err);
-    } finally {
-      setIsLoadingGraph(false);
-    }
-  };
-
-  // 4. Load Duplicates
-  const loadDuplicates = async () => {
-    setIsLoadingDuplicates(true);
-    try {
-      const params: Record<string, string> = {};
-      if (selectedRepoIds.length > 0) params["repos"] = selectedRepoIds.join(",");
-
-      const res = await apiClient.get<any>("/multi-repo/duplicates", { params });
-      const json = res.data || {};
-      if (res.success) {
-        setDuplicates(json.data || json);
-      }
-    } catch (err) {
-      console.warn("Failed to load duplicates:", err);
-    } finally {
-      setIsLoadingDuplicates(false);
-    }
-  };
-
-  // 5. Load Services
-  const loadServices = async () => {
-    setIsLoadingEndpoints(true);
-    try {
-      const params: Record<string, string> = {};
-      if (selectedRepoIds.length > 0) params["repos"] = selectedRepoIds.join(",");
-
-      const res = await apiClient.get<any>("/multi-repo/services", { params });
-      const json = res.data || {};
-      if (res.success) {
-        setEndpoints(json.data || json);
-      }
-    } catch (err) {
-      console.warn("Failed to load services:", err);
-    } finally {
-      setIsLoadingEndpoints(false);
-    }
-  };
-
-  // 6. Load Insights
-  const loadInsights = async () => {
-    setIsLoadingInsights(true);
-    try {
-      const res = await apiClient.get<any>("/multi-repo/technology-insights");
-      const json = res.data || {};
-      if (res.success) {
-        setInsights(json.data || json);
-      }
-    } catch (err) {
-      console.warn("Failed to load technology insights:", err);
-    } finally {
-      setIsLoadingInsights(false);
-    }
-  };
-
-  // Switch tabs & trigger fetches as needed
   useEffect(() => {
-    if (activeTab === "dependencies" && !dependencyGraph) {
-      loadDependencyGraph();
-    } else if (activeTab === "duplicates" && duplicates.length === 0) {
-      loadDuplicates();
-    } else if (activeTab === "services" && endpoints.length === 0) {
-      loadServices();
-    } else if (activeTab === "insights" && !insights) {
-      loadInsights();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+    loadInitialData();
+  }, [loadInitialData]);
 
-  // Handle repository selection toggle
+  // 2. Run Re-Analysis with animated progress
+  const runAnalysis = useCallback(
+    (targetRepoIds?: string[]) => {
+      const ids = targetRepoIds || selectedRepoIds;
+      setIsAnalyzing(true);
+      setAnalysisProgress(15);
+
+      const store = getStore();
+
+      setTimeout(() => {
+        setAnalysisProgress(55);
+        setTimeout(() => {
+          setAnalysisProgress(90);
+          const result = analyzeMultiRepo(ids, store);
+          setAnalysisResult(result);
+          cacheMultiRepoAnalysis(result);
+          setAnalysisProgress(100);
+          setIsAnalyzing(false);
+
+          logActivity({
+            type: "multi_repo_analysis",
+            title: `Multi-Repository Analysis refreshed`,
+            description: `Analyzed ${ids.length} codebases: ${result.summary.crossRepoDependencies} dependencies, ${result.summary.versionConflictsCount} version conflicts.`,
+            status: "success",
+            href: "/multi-repo",
+          });
+
+          showToast(`Re-analysis complete across ${ids.length} repositories!`);
+        }, 200);
+      }, 150);
+    },
+    [selectedRepoIds]
+  );
+
+  // 3. Workspace Switch Handler
+  const handleSelectWorkspace = (wsId: string) => {
+    setActiveWorkspaceId(wsId);
+    const store = getStore();
+    store.activeWorkspaceId = wsId;
+    saveStore(store);
+
+    const linkedLinks = store.workspaceRepositories?.[wsId] || [];
+    const linkedIds = linkedLinks.map((l: any) => l.repositoryId);
+    const allRepos = (store.repositories || []).map((r: any) => ({
+      ...r,
+      isStale: Boolean(r.isStale),
+      status: r.status || "ready",
+      symbolCount: r.symbolCount || 24,
+      fileCount: r.fileCount || 6,
+      loc: r.loc || 2400,
+    }));
+
+    const availableRepos = linkedIds.length > 0
+      ? allRepos.filter((r) => linkedIds.includes(r.id))
+      : allRepos;
+
+    setRepositories(availableRepos);
+    const newSelectedIds = availableRepos.map((r) => r.id);
+    setSelectedRepoIds(newSelectedIds);
+    runAnalysis(newSelectedIds);
+  };
+
+  // 4. Toggle Repository selection in scope
   const handleToggleRepo = (repoId: string) => {
-    setSelectedRepoIds((prev) => {
-      const next = prev.includes(repoId) ? prev.filter((id) => id !== repoId) : [...prev, repoId];
-      return next;
-    });
+    const next = selectedRepoIds.includes(repoId)
+      ? selectedRepoIds.filter((id) => id !== repoId)
+      : [...selectedRepoIds, repoId];
+
+    setSelectedRepoIds(next);
+    runAnalysis(next);
   };
 
   const handleSelectAll = () => {
-    setSelectedRepoIds(repositories.map((r) => r.id));
+    const allIds = repositories.map((r) => r.id);
+    setSelectedRepoIds(allIds);
+    runAnalysis(allIds);
   };
 
   const handleClearAll = () => {
     setSelectedRepoIds([]);
+    const emptyResult = analyzeMultiRepo([], getStore());
+    setAnalysisResult(emptyResult);
   };
 
-  // Cross-Repo AI Query Handler
-  const handleAskQuestion = async (q: string): Promise<CrossRepoAnswerResponse> => {
-    const res = await apiClient.post<any>("/multi-repo/query", {
-      question: q,
-      repositoryIds: selectedRepoIds,
+  // 5. Shared Libraries Alignment Handler
+  const handleApplyAlignment = async (item: SharedLibraryItem, targetVersion: string) => {
+    const store = getStore();
+
+    item.filesToChange.forEach((change) => {
+      const fileObj = store.repositoryFiles?.[change.repoId]?.[change.file];
+      if (fileObj) {
+        let updatedCode = fileObj.code;
+        if (change.file.endsWith("package.json")) {
+          try {
+            const parsed = JSON.parse(updatedCode);
+            if (parsed.dependencies?.[item.name]) {
+              parsed.dependencies[item.name] = change.targetVersion;
+            }
+            if (parsed.devDependencies?.[item.name]) {
+              parsed.devDependencies[item.name] = change.targetVersion;
+            }
+            updatedCode = JSON.stringify(parsed, null, 2);
+          } catch (e) {
+            updatedCode = updatedCode.replace(new RegExp(`"${item.name}":\\s*"[^"]+"`), `"${item.name}": "${change.targetVersion}"`);
+          }
+        } else if (change.file.endsWith("requirements.txt")) {
+          updatedCode = updatedCode.replace(new RegExp(`${item.name}==[^\\n]+`), `${item.name}==${change.targetVersion}`);
+        }
+
+        updateRepositoryFile(change.repoId, change.file, updatedCode);
+      }
     });
-    const json = res.data || {};
-    if (!res.success) throw new Error(json.error || res.message || "Failed to answer question");
-    return json.data || json;
+
+    showToast(`Aligned ${item.name} to ${targetVersion} across manifests!`, "success");
+    // Re-run analysis immediately
+    runAnalysis();
   };
 
-  // Cross-Repo Impact Evaluation Handler
-  const handleAnalyzeImpact = async (
-    sRepo: string,
-    cName: string,
-    cFile: string,
-    breaking: boolean
+  // 6. Duplicate Code Extract Handler
+  const handleExtractProposal = (candidate: DuplicateCandidate) => {
+    addRefactoringProposal({
+      title: `Extract ${candidate.title} into shared-core-lib`,
+      repositoryId: "shared-core-lib",
+      filePath: "src/validators.ts",
+      targetFile: "src/validators.ts",
+      symbolName: candidate.instances[0]?.symbolName || "sharedUtility",
+      description: `Consolidate ${candidate.similarityScore}% duplicate implementation from ${candidate.instances.map((i) => i.repositoryName).join(" & ")}.`,
+      confidenceScore: candidate.similarityScore,
+      expectedDebtReduction: 20,
+      sourceCodeSnippet: candidate.instances[0]?.snippet,
+    });
+
+    showToast(`Created refactoring proposal to extract to shared-core-lib! Visible on Refactoring & Debt.`, "success");
+  };
+
+  // 7. Calculate Cross-Repo Impact Handler
+  const handleCalculateImpact = async (
+    sourceRepoId: string,
+    file: string,
+    symbol: string,
+    isBreaking: boolean
   ): Promise<CrossRepoImpactReport> => {
-    const res = await apiClient.post<any>("/multi-repo/impact", {
-      sourceRepoId: sRepo,
-      changedComponent: {
-        type: cName.startsWith("POST") || cName.startsWith("GET") ? "api_endpoint" : "symbol",
-        name: cName,
-        file: cFile,
-        isBreaking: breaking,
-      },
-      targetRepoIds: selectedRepoIds,
-    });
-    const json = res.data || {};
-    if (!res.success) throw new Error(json.error || res.message || "Failed to analyze impact");
-    return json.data || json;
+    const store = getStore();
+    return calculateCrossRepoImpact(sourceRepoId, file, symbol, isBreaking, selectedRepoIds, store);
   };
 
-  const tabs: Array<{ id: typeof activeTab; label: string; icon: React.ReactNode }> = [
-    { id: "search", label: "Cross-Repo Search", icon: <Search className="w-4 h-4" /> },
-    { id: "dependencies", label: "Dependency Graph", icon: <GitFork className="w-4 h-4" /> },
-    { id: "assistant", label: "Cross-Repo AI Q&A", icon: <Sparkles className="w-4 h-4" /> },
-    { id: "duplicates", label: "Duplicates & Reuse", icon: <Repeat className="w-4 h-4" /> },
-    { id: "services", label: "Shared APIs & Services", icon: <Globe className="w-4 h-4" /> },
-    { id: "impact", label: "Change Impact Analysis", icon: <GitBranch className="w-4 h-4" /> },
-    { id: "insights", label: "Technology Insights", icon: <PieChart className="w-4 h-4" /> },
+  // 8. Unified Search Handler
+  const handleExecuteSearch = (q: string, category: CrossRepoEntityType, exact: boolean) => {
+    setIsSearching(true);
+    setSearchQuery(q);
+    setTimeout(() => {
+      const store = getStore();
+      const res = executeUnifiedSearch(q, category, exact, selectedRepoIds, store);
+      setSearchResults(res);
+      setIsSearching(false);
+    }, 100);
+  };
+
+  // Tab change with optional conflict filter preset
+  const handleSelectTab = (tab: MultiRepoTab, options?: { showConflictsOnly?: boolean }) => {
+    setActiveTab(tab);
+    if (options?.showConflictsOnly !== undefined) {
+      setShowConflictsOnly(options.showConflictsOnly);
+    }
+  };
+
+  const tabs: Array<{
+    id: MultiRepoTab;
+    label: string;
+    icon: React.ReactNode;
+    badgeCount?: number;
+    badgeVariant?: "coral" | "brand" | "cyan";
+  }> = [
+    {
+      id: "dependencies",
+      label: "Dependency Map",
+      icon: <GitFork className="w-4 h-4" />,
+      badgeCount: analysisResult?.graph?.edges?.length,
+      badgeVariant: "brand",
+    },
+    {
+      id: "shared-libraries",
+      label: "Shared Libraries",
+      icon: <Package className="w-4 h-4" />,
+      badgeCount: analysisResult?.summary?.versionConflictsCount ? analysisResult.summary.versionConflictsCount : undefined,
+      badgeVariant: "coral",
+    },
+    {
+      id: "duplicates",
+      label: "Duplicate Code",
+      icon: <Repeat className="w-4 h-4" />,
+      badgeCount: analysisResult?.duplicateCandidates?.length,
+      badgeVariant: "cyan",
+    },
+    {
+      id: "api-contracts",
+      label: "API Contracts",
+      icon: <Globe className="w-4 h-4" />,
+      badgeCount: analysisResult?.endpoints?.length,
+      badgeVariant: "brand",
+    },
+    {
+      id: "impact",
+      label: "Cross-Repo Impact",
+      icon: <GitBranch className="w-4 h-4" />,
+    },
+    {
+      id: "search",
+      label: "Unified Search",
+      icon: <Search className="w-4 h-4" />,
+    },
   ];
 
   return (
     <div className="min-h-screen bg-[#F7F5FE] dark:bg-[#07090E] p-4 md:p-8 space-y-6">
-      {/* Top Header & Scope Selector */}
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl bg-white dark:bg-[#0D111A] border border-[#7C5CFC]/40 text-xs font-semibold text-[#19143D] dark:text-[#F3F5FA] shadow-xl animate-fade-in">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Header & Scope Selector */}
       <MultiRepoHeader
         repositories={repositories}
         selectedRepoIds={selectedRepoIds}
         onToggleRepo={handleToggleRepo}
         onSelectAll={handleSelectAll}
         onClearAll={handleClearAll}
-        isLoading={isLoadingRepos}
-        onRefresh={loadRepositories}
+        workspaces={workspaces}
+        activeWorkspaceId={activeWorkspaceId}
+        onSelectWorkspace={handleSelectWorkspace}
+        isAnalyzing={isAnalyzing}
+        analysisProgress={analysisProgress}
+        onReanalyze={() => runAnalysis()}
+        lastAnalyzedTime={analysisResult ? new Date(analysisResult.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : undefined}
       />
 
-      {/* Navigation Tabs */}
-      <div className="flex overflow-x-auto border-b border-[#EAE6FD] dark:border-[#1E2638] gap-2 pb-px no-scrollbar">
+      {/* KPI Row (Clicking any KPI routes to its respective tab) */}
+      <MultiRepoKPIRow
+        summary={
+          analysisResult?.summary || {
+            reposAnalyzed: selectedRepoIds.length,
+            crossRepoDependencies: 0,
+            sharedLibrariesCount: 0,
+            duplicateCodeBlocks: 0,
+            versionConflictsCount: 0,
+            crossServiceAPICalls: 0,
+          }
+        }
+        activeTab={activeTab}
+        onSelectTab={handleSelectTab}
+      />
+
+      {/* Navigation Tabs Bar */}
+      <div className="flex overflow-x-auto border-b border-[#EAE6FD] dark:border-[#1E2638] gap-2 pb-px no-scrollbar select-none">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold whitespace-nowrap border-b-2 transition-all ${
+            className={`flex items-center gap-2 px-4 py-3 text-xs sm:text-sm font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer ${
               activeTab === tab.id
-                ? "border-[#6C4DFF] dark:border-[#29D3C2] text-[#6C4DFF] dark:text-[#29D3C2]"
+                ? "border-[#7C5CFC] text-[#7C5CFC] dark:text-[#A78BFA]"
                 : "border-transparent text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D] dark:hover:text-[#F3F5FA]"
             }`}
           >
             {tab.icon}
             <span>{tab.label}</span>
+            {tab.badgeCount !== undefined && tab.badgeCount > 0 && (
+              <span
+                className={`ml-1 px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  tab.badgeVariant === "coral"
+                    ? "bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300"
+                    : tab.badgeVariant === "cyan"
+                    ? "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/60 dark:text-cyan-300"
+                    : "bg-[#7C5CFC]/15 text-[#7C5CFC] dark:text-[#A78BFA]"
+                }`}
+              >
+                {tab.badgeCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Active Tab Content */}
+      {/* Active Tab Content Area */}
       <div className="pt-2">
-        {activeTab === "search" && (
-          <CrossRepoSearchPanel
-            searchResults={searchResults}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            onExecuteSearch={(q, cat, exact) => executeSearch(q, cat, exact)}
-            isSearching={isSearching}
-            selectedRepoCount={selectedRepoIds.length}
-          />
-        )}
-
         {activeTab === "dependencies" && (
-          <CrossRepoDependencyVisualizer
-            graph={dependencyGraph}
-            isLoading={isLoadingGraph}
+          <DependencyMapTab
+            graph={
+              analysisResult?.graph || {
+                nodes: [],
+                edges: [],
+                stats: { totalNodes: 0, totalEdges: 0, internalLibraries: 0, serviceIntegrations: 0, packageDependencies: 0 },
+              }
+            }
+            isLoading={isAnalyzing}
           />
         )}
 
-        {activeTab === "assistant" && (
-          <CrossRepoQAAssistant
-            onAskQuestion={handleAskQuestion}
-            selectedRepoCount={selectedRepoIds.length}
+        {activeTab === "shared-libraries" && (
+          <SharedLibrariesTab
+            libraries={analysisResult?.sharedLibraries || []}
+            isLoading={isAnalyzing}
+            onApplyAlignment={handleApplyAlignment}
+            initialShowConflictsOnly={showConflictsOnly}
           />
         )}
 
         {activeTab === "duplicates" && (
-          <DuplicateCodeInspector
-            candidates={duplicates}
-            isLoading={isLoadingDuplicates}
+          <DuplicateCodeTab
+            candidates={analysisResult?.duplicateCandidates || []}
+            isLoading={isAnalyzing}
+            onExtractProposal={handleExtractProposal}
           />
         )}
 
-        {activeTab === "services" && (
-          <SharedAPICatalog
-            endpoints={endpoints}
-            isLoading={isLoadingEndpoints}
+        {activeTab === "api-contracts" && (
+          <APIContractsTab
+            endpoints={analysisResult?.endpoints || []}
+            isLoading={isAnalyzing}
           />
         )}
 
         {activeTab === "impact" && (
-          <CrossRepoImpactAnalyzer
+          <CrossRepoImpactTab
             repositories={repositories}
-            onAnalyzeImpact={handleAnalyzeImpact}
+            onCalculateImpact={handleCalculateImpact}
             isLoading={false}
           />
         )}
 
-        {activeTab === "insights" && (
-          <TechnologyInsightsView
-            insights={insights}
-            isLoading={isLoadingInsights}
+        {activeTab === "search" && (
+          <UnifiedSearchTab
+            searchResults={searchResults}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            onExecuteSearch={handleExecuteSearch}
+            isSearching={isSearching}
+            selectedRepoCount={selectedRepoIds.length}
           />
         )}
       </div>

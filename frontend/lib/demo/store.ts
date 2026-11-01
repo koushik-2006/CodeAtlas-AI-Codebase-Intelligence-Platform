@@ -68,9 +68,11 @@ export interface DemoStoreData {
   systemHealth: any;
   logs: any[];
   traces: any[];
+  multiRepoAnalysis?: any;
+  activeWorkspaceId?: string;
 }
 
-const STORE_VERSION = 4;
+const STORE_VERSION = 5;
 
 /**
  * Generates the complete initial seeded dataset across 3 workspaces and 7 repositories.
@@ -382,6 +384,10 @@ export function createInitialData(): DemoStoreData {
       { id: "wsr_1", workspaceId: "ws_team_demo", repositoryId: "sample-project", addedBy: "usr_demo", addedAt: "2026-01-01T00:00:00.000Z" },
       { id: "wsr_2", workspaceId: "ws_team_demo", repositoryId: "shared-core-lib", addedBy: "usr_demo", addedAt: "2026-01-02T00:00:00.000Z" },
       { id: "wsr_3", workspaceId: "ws_team_demo", repositoryId: "payment-service", addedBy: "usr_demo", addedAt: "2026-01-02T00:00:00.000Z" },
+      { id: "wsr_4", workspaceId: "ws_team_demo", repositoryId: "ecommerce-platform", addedBy: "usr_demo", addedAt: "2026-01-03T00:00:00.000Z" },
+      { id: "wsr_5", workspaceId: "ws_team_demo", repositoryId: "auth-service", addedBy: "usr_demo", addedAt: "2026-01-03T00:00:00.000Z" },
+      { id: "wsr_6", workspaceId: "ws_team_demo", repositoryId: "fastapi-backend", addedBy: "usr_demo", addedAt: "2026-01-04T00:00:00.000Z" },
+      { id: "wsr_7", workspaceId: "ws_team_demo", repositoryId: "my-project", addedBy: "usr_demo", addedAt: "2026-01-04T00:00:00.000Z" },
     ],
     ws_default: [
       { id: "wsr_4", workspaceId: "ws_default", repositoryId: "sample-project", addedBy: "usr_demo", addedAt: "2026-01-05T00:00:00.000Z" },
@@ -438,8 +444,32 @@ export function createInitialData(): DemoStoreData {
   };
 
   const repositoryFiles: Record<string, Record<string, { code: string; language: string }>> = {
-    "sample-project": SAMPLE_PROJECT_CODE,
+    "sample-project": {
+      ...SAMPLE_PROJECT_CODE,
+      "package.json": {
+        language: "json",
+        code: JSON.stringify(
+          {
+            name: "demo-auth-service",
+            version: "1.0.0",
+            private: true,
+            dependencies: {
+              react: "18.2.0",
+              "react-dom": "18.2.0",
+              axios: "^1.6.2",
+              "@acme/shared-utils": "^1.2.0",
+            },
+          },
+          null,
+          2
+        ),
+      },
+    },
     "my-project": {
+      "requirements.txt": {
+        language: "text",
+        code: "fastapi==0.110.0\npydantic==2.6.4\nuvicorn==0.28.0\n",
+      },
       "app/main.py": {
         language: "python",
         code: `from fastapi import FastAPI\nfrom app.auth import auth_router\n\napp = FastAPI(title="Core Auth API")\napp.include_router(auth_router, prefix="/api/v1/auth")\n\n@app.get("/health")\ndef health_check():\n    return {"status": "ok"}\n`,
@@ -450,19 +480,109 @@ export function createInitialData(): DemoStoreData {
       },
     },
     "shared-core-lib": {
+      "package.json": {
+        language: "json",
+        code: JSON.stringify(
+          {
+            name: "@acme/shared-utils",
+            version: "1.4.0",
+            private: false,
+            dependencies: {
+              axios: "^1.7.2",
+              lodash: "^4.17.21",
+            },
+          },
+          null,
+          2
+        ),
+      },
       "src/validators.ts": {
         language: "typescript",
         code: `export function validateEmail(val: string): boolean {\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(val.trim());\n}\n\nexport function validateUuid(id: string): boolean {\n  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);\n}\n`,
       },
       "src/http-client.ts": {
         language: "typescript",
-        code: `export class HttpClient {\n  constructor(private baseUrl: string) {}\n  async get<T>(path: string): Promise<T> {\n    const res = await fetch(\`\${this.baseUrl}\${path}\`);\n    return res.json();\n  }\n}\n`,
+        code: `export class HttpClient {\n  constructor(private baseUrl: string) {}\n  async get<T>(path: string): Promise<T> {\n    const res = await fetch(\`\${this.baseUrl}\${path}\`);\n    return res.json();\n  }\n  async post<T>(path: string, body: any): Promise<T> {\n    const res = await fetch(\`\${this.baseUrl}\${path}\`, {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify(body),\n    });\n    return res.json();\n  }\n}\n`,
+      },
+      "src/index.ts": {
+        language: "typescript",
+        code: `export * from "./validators";\nexport * from "./http-client";\n`,
       },
     },
     "payment-service": {
+      "package.json": {
+        language: "json",
+        code: JSON.stringify(
+          {
+            name: "payment-service",
+            version: "1.2.0",
+            dependencies: {
+              react: "18.3.1",
+              axios: "^1.7.2",
+              "@acme/shared-utils": "^1.4.0",
+            },
+          },
+          null,
+          2
+        ),
+      },
       "src/checkout.ts": {
         language: "typescript",
-        code: `import { validateEmail } from "@acme/shared-utils";\n\nexport async function processCheckout(orderId: string, email: string, amount: number) {\n  if (!validateEmail(email)) throw new Error("Invalid customer email");\n  return { orderId, status: "processed", amount };\n}\n`,
+        code: `import { validateEmail } from "@acme/shared-utils";\n\nexport async function processCheckout(orderId: string, email: string, amount: number) {\n  if (!validateEmail(email)) throw new Error("Invalid customer email");\n  // Verify user authorization token with auth microservice\n  const tokenRes = await fetch("https://auth.internal/token", {\n    method: "POST",\n    headers: { "Content-Type": "application/json" },\n    body: JSON.stringify({ orderId, email }),\n  });\n  // Check order validity with order validator\n  await fetch("https://api.internal/api/v1/orders/validate", {\n    method: "POST",\n    body: JSON.stringify({ orderId }),\n  });\n  return { orderId, status: "processed", amount };\n}\n`,
+      },
+      "src/payment-api.ts": {
+        language: "typescript",
+        code: `export async function handlePaymentRoute(req: any, res: any) {\n  const { orderId, email, amount } = req.body;\n  return res.json({ success: true, timestamp: Date.now() });\n}\n`,
+      },
+      "src/validators.ts": {
+        language: "typescript",
+        code: `/**\n * RFC 5322 compliant regex check for email formatting.\n */\nexport function validateEmail(email: string): boolean {\n  if (!email || typeof email !== "string") return false;\n  const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n  return emailRegex.test(email.trim());\n}\n`,
+      },
+    },
+    "ecommerce-platform": {
+      "package.json": {
+        language: "json",
+        code: JSON.stringify(
+          {
+            name: "ecommerce-platform",
+            version: "2.4.0",
+            dependencies: {
+              react: "18.3.1",
+              axios: "^1.7.2",
+              "@acme/shared-utils": "^1.4.0",
+            },
+          },
+          null,
+          2
+        ),
+      },
+      "src/api.ts": {
+        language: "typescript",
+        code: `import axios from "axios";\n\nexport async function fetchAuthToken(credentials: any) {\n  const res = await fetch("https://auth.internal/token", {\n    method: "POST",\n    body: JSON.stringify(credentials),\n  });\n  return res.json();\n}\n\nexport async function createSession(sessionPayload: any) {\n  const res = await axios.post("https://api.internal/api/v1/auth/session", sessionPayload);\n  return res.data;\n}\n`,
+      },
+      "src/cart.ts": {
+        language: "typescript",
+        code: `import { validateEmail } from "@acme/shared-utils";\n\nexport function validateCartCheckout(email: string, items: any[]) {\n  if (!validateEmail(email)) throw new Error("Invalid checkout email");\n  return { valid: true, count: items.length };\n}\n`,
+      },
+    },
+    "auth-service": {
+      "go.mod": {
+        language: "text",
+        code: `module github.com/koush-dev/auth-service\n\ngo 1.22\n\nrequire (\n\tgithub.com/golang-jwt/jwt/v5 v5.2.0\n\tgithub.com/gorilla/mux v1.8.1\n)\n`,
+      },
+      "main.go": {
+        language: "go",
+        code: `package main\n\nimport (\n\t"net/http"\n\t"github.com/gorilla/mux"\n)\n\nfunc main() {\n\tr := mux.NewRouter()\n\tr.HandleFunc("/token", handleTokenAuth).Methods("POST")\n\tr.HandleFunc("/userinfo", handleUserInfo).Methods("GET")\n\thttp.ListenAndServe(":8080", r)\n}\n\nfunc handleTokenAuth(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\`{"token":"jwt_token_sample"}\`))\n}\n\nfunc handleUserInfo(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\`{"user":"demo_user"}\`))\n}\n`,
+      },
+    },
+    "fastapi-backend": {
+      "requirements.txt": {
+        language: "text",
+        code: "fastapi==0.111.0\npydantic==2.7.4\nuvicorn==0.30.1\nrequests==2.32.3\n",
+      },
+      "app/main.py": {
+        language: "python",
+        code: `from fastapi import FastAPI\n\napp = FastAPI(title="FastAPI Analytics Backend")\n\n@app.get("/health")\ndef health():\n    return {"status": "healthy"}\n\n@app.get("/api/v1/reports")\ndef get_reports():\n    return [{"id": 1, "title": "Quarterly Performance"}]\n`,
       },
     },
   };
@@ -1987,4 +2107,98 @@ export function deleteAnnotation(workspaceId: string, id: string): boolean {
   store.workspaceAnnotations[workspaceId] = list.filter((a) => a.id !== id);
   saveStore(store);
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Repo & Refactoring Mutation Helpers
+// ---------------------------------------------------------------------------
+
+export function addRefactoringProposal(proposal: {
+  title: string;
+  repositoryId?: string;
+  filePath?: string;
+  targetFile?: string;
+  operationType?: string;
+  operation?: string;
+  symbolName?: string;
+  description?: string;
+  confidenceScore?: number;
+  expectedDebtReduction?: number;
+  sourceCodeSnippet?: string;
+  suggestedReplacement?: string;
+}): any {
+  const store = getStore();
+  if (!store.refactoringProposals) store.refactoringProposals = [];
+
+  const newProp = {
+    id: `prop_refactor_${Date.now()}`,
+    repositoryId: proposal.repositoryId || "shared-core-lib",
+    userId: "usr_demo",
+    title: proposal.title,
+    operationType: proposal.operationType || "extract_function",
+    operation: proposal.operation || "extract_function",
+    filePath: proposal.filePath || "src/validators.ts",
+    targetFile: proposal.targetFile || "src/validators.ts",
+    symbolName: proposal.symbolName || "consolidateFunction",
+    description: proposal.description || "Consolidate duplicate implementations into shared-core-lib.",
+    confidenceScore: proposal.confidenceScore || 96,
+    expectedDebtReduction: proposal.expectedDebtReduction || 15,
+    sourceCodeSnippet: proposal.sourceCodeSnippet || "",
+    suggestedReplacement: proposal.suggestedReplacement || "",
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+
+  store.refactoringProposals.unshift(newProp);
+
+  logActivity({
+    type: "refactoring_proposed",
+    title: `Created Refactoring Proposal: ${newProp.title}`,
+    description: `Targeting consolidation in ${newProp.repositoryId}. Reduces cross-codebase duplication.`,
+    status: "info",
+    href: "/refactoring",
+    linkText: "View on Refactoring & Debt",
+  });
+
+  saveStore(store);
+  return newProp;
+}
+
+export function updateRepositoryFile(repoId: string, filePath: string, newCode: string): void {
+  const store = getStore();
+  if (!store.repositoryFiles) store.repositoryFiles = {};
+  if (!store.repositoryFiles[repoId]) store.repositoryFiles[repoId] = {};
+
+  store.repositoryFiles[repoId][filePath] = {
+    code: newCode,
+    language: filePath.endsWith(".json")
+      ? "json"
+      : filePath.endsWith(".py")
+      ? "python"
+      : filePath.endsWith(".go")
+      ? "go"
+      : "typescript",
+  };
+
+  logActivity({
+    type: "manifest_aligned",
+    title: `Aligned package version in ${repoId}`,
+    description: `Updated ${filePath} to resolve dependency version conflict across workspaces.`,
+    status: "success",
+    href: `/repositories/${repoId}`,
+    linkText: "Inspect Repo",
+  });
+
+  saveStore(store);
+}
+
+export function cacheMultiRepoAnalysis(analysis: any): void {
+  const store = getStore();
+  store.multiRepoAnalysis = analysis;
+  saveStore(store);
+}
+
+export function getCachedMultiRepoAnalysis(): any {
+  const store = getStore();
+  return store.multiRepoAnalysis || null;
 }
