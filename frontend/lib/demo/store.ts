@@ -529,6 +529,56 @@ export function createInitialData(): DemoStoreData {
       },
     },
     "payment-service": {
+      "PaymentProcessor.java": {
+        language: "java",
+        code: `package com.acme.payment;
+
+public class PaymentProcessor {
+    private final PaymentGateway gateway;
+
+    public PaymentProcessor(PaymentGateway gateway) {
+        this.gateway = gateway;
+    }
+
+    public PaymentResult process(Order order) {
+        if (order == null) {
+            throw new IllegalArgumentException("Order cannot be null");
+        }
+
+        // Validate order items
+        order.validate();
+
+        String transactionId = order.getTransaction().getId();
+        return this.gateway.capture(transactionId, order.getAmount());
+    }
+}
+`,
+      },
+      "src/PaymentProcessor.java": {
+        language: "java",
+        code: `package com.acme.payment;
+
+public class PaymentProcessor {
+    private final PaymentGateway gateway;
+
+    public PaymentProcessor(PaymentGateway gateway) {
+        this.gateway = gateway;
+    }
+
+    public PaymentResult process(Order order) {
+        if (order == null) {
+            throw new IllegalArgumentException("Order cannot be null");
+        }
+
+        // Validate order items
+        order.validate();
+
+        String transactionId = order.getTransaction().getId();
+        return this.gateway.capture(transactionId, order.getAmount());
+    }
+}
+`,
+      },
       "package.json": {
         language: "json",
         code: JSON.stringify(
@@ -591,10 +641,74 @@ export function createInitialData(): DemoStoreData {
       },
       "main.go": {
         language: "go",
-        code: `package main\n\nimport (\n\t"net/http"\n\t"github.com/gorilla/mux"\n)\n\nfunc main() {\n\tr := mux.NewRouter()\n\tr.HandleFunc("/token", handleTokenAuth).Methods("POST")\n\tr.HandleFunc("/userinfo", handleUserInfo).Methods("GET")\n\thttp.ListenAndServe(":8080", r)\n}\n\nfunc handleTokenAuth(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\`{"token":"jwt_token_sample"}\`))\n}\n\nfunc handleUserInfo(w http.ResponseWriter, r *http.Request) {\n\tw.Write([]byte(\`{"user":"demo_user"}\`))\n}\n`,
+        code: `package main
+
+import (
+\t"net/http"
+\t"github.com/gorilla/mux"
+)
+
+type Session struct {
+\tClaims map[string]interface{}
+\tUser   *User
+}
+
+type User struct {
+\tRole string
+}
+
+func handleTokenAuth(w http.ResponseWriter, r *http.Request) {
+\tw.Write([]byte(\`{"token":"jwt_token_sample"}\`))
+}
+
+func authHandler(session *Session, w http.ResponseWriter) {
+\ttoken := session.Claims["token"].(string)
+\tw.Write([]byte(token))
+}
+
+func main() {
+\tr := mux.NewRouter()
+\tr.HandleFunc("/token", handleTokenAuth).Methods("POST")
+\thttp.ListenAndServe(":8080", r)
+}
+`,
       },
     },
     "fastapi-backend": {
+      "routers/analytics.py": {
+        language: "python",
+        code: `from typing import Dict, Any
+
+def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
+    """
+    Calculates aggregate performance metric from sensor telemetry dict.
+    Throws KeyError if 'value' is missing.
+    """
+    if not raw_data:
+        return 0.0
+    # Direct lookup on raw_data
+    # Assumes key exists unconditionally
+    total = raw_data['value'] + offset
+    return round(total, 4)
+`,
+      },
+      "app/routers/analytics.py": {
+        language: "python",
+        code: `from typing import Dict, Any
+
+def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
+    """
+    Calculates aggregate performance metric from sensor telemetry dict.
+    Throws KeyError if 'value' is missing.
+    """
+    if not raw_data:
+        return 0.0
+    # Direct lookup on raw_data
+    # Assumes key exists unconditionally
+    total = raw_data['value'] + offset
+    return round(total, 4)
+`,
+      },
       "requirements.txt": {
         language: "text",
         code: "fastapi==0.111.0\npydantic==2.7.4\nuvicorn==0.30.1\nrequests==2.32.3\n",
@@ -892,73 +1006,108 @@ export function createInitialData(): DemoStoreData {
     {
       id: "inv_demo_1",
       userId: "usr_demo",
+      workspaceId: "ws_team_demo",
       repositoryId: "sample-project",
+      repositoryName: "demo-auth-service",
       title: "TypeError: Cannot read properties of undefined (reading 'token') at loginUser",
-      stackTrace: "TypeError: Cannot read properties of undefined (reading 'token')\n    at loginUser (src/services/auth.ts:28:19)\n    at handleSubmit (src/components/LoginForm.tsx:28:25)",
-      parsedFrames: [
-        {
-          id: "frame-1",
-          order: 1,
-          raw: "at loginUser (src/services/auth.ts:28:19)",
-          functionName: "loginUser",
-          filePath: "src/services/auth.ts",
-          line: 28,
-          column: 19,
-          isExternal: false,
-          isVerified: true,
-          symbolName: "loginUser",
-          sourceSnippet: {
-            startLine: 24,
-            endLine: 32,
-            focusLine: 28,
-            lines: [
-              { lineNumber: 25, content: "  const user = await UserService.findUserByEmail(email);", isHighlighted: false },
-              { lineNumber: 26, content: "  if (!user) throw new AuthError('User not found');", isHighlighted: false },
-              { lineNumber: 27, content: "  const session = await issueSessionToken(user);", isHighlighted: false },
-              { lineNumber: 28, content: "  return session.token;", isHighlighted: true },
-              { lineNumber: 29, content: "}", isHighlighted: false },
-            ],
+      status: "investigating",
+      mode: "repository_grounded",
+      errorType: "TypeError",
+      errorMessage: "Cannot read properties of undefined (reading 'token')",
+      runtime: "nodejs",
+      rawTrace: "TypeError: Cannot read properties of undefined (reading 'token')\n    at loginUser (src/services/auth.ts:28:19)\n    at handleSubmit (src/components/LoginForm.tsx:28:25)",
+      parsedTrace: {
+        raw: "TypeError: Cannot read properties of undefined (reading 'token')\n    at loginUser (src/services/auth.ts:28:19)\n    at handleSubmit (src/components/LoginForm.tsx:28:25)",
+        runtime: "nodejs",
+        errorType: "TypeError",
+        errorMessage: "Cannot read properties of undefined (reading 'token')",
+        totalFrames: 2,
+        verifiedFramesCount: 2,
+        unresolvedFramesCount: 0,
+        frames: [
+          {
+            id: "frame_1",
+            order: 1,
+            raw: "at loginUser (src/services/auth.ts:28:19)",
+            functionName: "loginUser",
+            filePath: "src/services/auth.ts",
+            normalizedPath: "src/services/auth.ts",
+            line: 28,
+            column: 19,
+            isExternal: false,
+            isVerified: true,
+            symbolName: "loginUser",
+            sourceSnippet: {
+              startLine: 24,
+              endLine: 32,
+              focusLine: 28,
+              lines: [
+                { lineNumber: 25, content: "export async function loginUser(email: string, password: string): Promise<string> {", isHighlighted: false },
+                { lineNumber: 26, content: "  const user = { email, isActive: false };", isHighlighted: false },
+                { lineNumber: 27, content: "  const session = await issueSessionToken(user);", isHighlighted: false },
+                { lineNumber: 28, content: "  return session.token;", isHighlighted: true },
+                { lineNumber: 29, content: "}", isHighlighted: false },
+              ],
+            },
           },
-        },
-        {
-          id: "frame-2",
-          order: 2,
-          raw: "at handleSubmit (src/components/LoginForm.tsx:28:25)",
-          functionName: "handleSubmit",
-          filePath: "src/components/LoginForm.tsx",
-          line: 28,
-          column: 25,
-          isExternal: false,
-          isVerified: true,
-          symbolName: "handleSubmit",
-          sourceSnippet: {
-            startLine: 24,
-            endLine: 32,
-            focusLine: 28,
-            lines: [
-              { lineNumber: 26, content: "  const handleSubmit = async (e: React.FormEvent) => {", isHighlighted: false },
-              { lineNumber: 27, content: "    e.preventDefault();", isHighlighted: false },
-              { lineNumber: 28, content: "    const res = await loginUser(email, password);", isHighlighted: true },
-              { lineNumber: 29, content: "  };", isHighlighted: false },
-            ],
+          {
+            id: "frame_2",
+            order: 2,
+            raw: "at handleSubmit (src/components/LoginForm.tsx:28:25)",
+            functionName: "handleSubmit",
+            filePath: "src/components/LoginForm.tsx",
+            normalizedPath: "src/components/LoginForm.tsx",
+            line: 28,
+            column: 25,
+            isExternal: false,
+            isVerified: true,
+            symbolName: "handleSubmit",
+            sourceSnippet: {
+              startLine: 24,
+              endLine: 32,
+              focusLine: 28,
+              lines: [
+                { lineNumber: 26, content: "  const handleSubmit = async (e: React.FormEvent) => {", isHighlighted: false },
+                { lineNumber: 27, content: "    e.preventDefault();", isHighlighted: false },
+                { lineNumber: 28, content: "    const res = await loginUser(email, password);", isHighlighted: true },
+                { lineNumber: 29, content: "  };", isHighlighted: false },
+              ],
+            },
           },
-        },
-      ],
+        ],
+      },
+      observedEvidence: {
+        errorType: "TypeError",
+        errorMessage: "Cannot read properties of undefined (reading 'token')",
+        verifiedLocations: [
+          { filePath: "src/services/auth.ts", line: 28, symbolName: "loginUser" },
+        ],
+        expectedBehavior: "loginUser should handle missing token in response and throw a descriptive error.",
+        actualBehavior: "Uncaught TypeError crashed the login form rendering.",
+        missingContext: [
+          "Runtime values of user credentials payload",
+          "API session status response under inactive account",
+        ],
+      },
       hypotheses: [
         {
           id: "hypo-1",
           rank: 1,
-          title: "issueSessionToken returns null for unverified or inactive users",
+          title: "issueSessionToken returns null for inactive users",
           category: "null_undefined_access",
           categoryLabel: "Null / Undefined Property Access",
-          explanation: "In `src/services/auth.ts:28`, `session` is assumed to be an object. If the user account is flagged as unverified, `issueSessionToken()` returns null, causing property access `session.token` to crash.",
+          explanation: "In src/services/auth.ts:28, session is assumed to be an object. If the user account is flagged as unverified, issueSessionToken() returns null, causing property access session.token to crash.",
           likelihood: "high",
           supportingEvidence: [
-            "Source line 27: `const session = await issueSessionToken(user)`",
-            "UserService defines inactive account status returning null token bundle",
+            "Source line 27: const session = await issueSessionToken(user)",
+            "Inactive account status returns null token bundle",
           ],
           counterEvidence: [],
-          recommendedAction: "Add an explicit null guard and throw `AccountSuspendedError` or `UnverifiedEmailError`.",
+          suggestedSteps: ["Add an explicit null guard and throw descriptive AuthError."],
+          targetFile: "src/services/auth.ts",
+          targetSymbol: "loginUser",
+          isInvestigated: false,
+          isConfirmedRootCause: true,
         },
         {
           id: "hypo-2",
@@ -970,7 +1119,10 @@ export function createInitialData(): DemoStoreData {
           likelihood: "low",
           supportingEvidence: [],
           counterEvidence: ["Crash is a TypeError on line 28, not a JWT configuration error"],
-          recommendedAction: "Verify environment configurations at application startup.",
+          suggestedSteps: ["Verify environment configurations at application startup."],
+          targetFile: "src/services/auth.ts",
+          isInvestigated: false,
+          isConfirmedRootCause: false,
         },
       ],
       suggestedFixes: [
@@ -982,39 +1134,33 @@ export function createInitialData(): DemoStoreData {
           filePath: "src/services/auth.ts",
           startLine: 27,
           endLine: 29,
-          diff: `@@ -27,3 +27,6 @@\n   const session = await issueSessionToken(user);\n+  if (!session || !session.token) {\n+    throw new AuthError('Failed to issue session token. Account may be inactive.');\n+  }\n   return session.token;`,
-          explanation: "Guards against undefined `session` and surfaces clean business exception to UI.",
-          riskLevel: "low",
-          isApplied: false,
-        },
-      ],
-      proposedFixes: [
-        {
-          id: "fix-1",
-          hypothesisId: "hypo-1",
-          title: "Add null guard for session token and throw descriptive AuthError",
-          description: "Prevents undefined property dereference and returns an actionable error message to the client form.",
-          filePath: "src/services/auth.ts",
-          startLine: 27,
-          endLine: 29,
-          diff: `@@ -27,3 +27,6 @@\n   const session = await issueSessionToken(user);\n+  if (!session || !session.token) {\n+    throw new AuthError('Failed to issue session token. Account may be inactive.');\n+  }\n   return session.token;`,
-          explanation: "Guards against undefined `session` and surfaces clean business exception to UI.",
-          riskLevel: "low",
+          originalSnippet: "  return session.token;",
+          replacementSnippet: "  if (!session || !session.token) {\n    throw new Error('Authentication failed: No valid session token returned.');\n  }\n  return session.token;",
+          patchDiff: "@@ -27,3 +27,6 @@\n   const session = await issueSessionToken(user);\n+  if (!session || !session.token) {\n+    throw new Error('Authentication failed: No valid session token returned.');\n+  }\n   return session.token;",
+          potentialSideEffects: ["Caller must handle exception"],
+          requiredTests: ["Verify error thrown when session is null"],
+          assumptions: ["Caller catches Promise rejection"],
+          isApplicable: true,
+          validationStatus: "validated",
           isApplied: false,
         },
       ],
       testRecommendations: [
         {
           id: "test-rec-1",
-          title: "Verify AuthError is thrown when issueSessionToken returns null",
-          filePath: "tests/auth.test.ts",
-          code: `test('should throw AuthError when user session issuance fails', async () => {\n  jest.spyOn(UserService, 'findUserByEmail').mockResolvedValue({ id: '1', isActive: false });\n  await expect(loginUser('inactive@example.com', 'pass')).rejects.toThrow('Account may be inactive');\n});`,
-          explanation: "Automated regression test verifying that inactive user accounts produce clean errors.",
+          title: "Verify error is thrown when user session issuance fails",
+          testFile: "tests/auth.test.ts",
           targetSymbol: "loginUser",
+          framework: "jest",
+          category: "regression",
+          rationale: "Automated regression test verifying that inactive user accounts produce clean errors.",
+          testCode: "test('should throw error when user session issuance fails', async () => {\n  await expect(loginUser('inactive@example.com', 'pass')).rejects.toThrow('No valid session token');\n});",
+          status: "suggested",
+          isExistingTest: false,
         },
       ],
       createdAt: "2026-01-25T10:00:00.000Z",
-      status: "analyzed",
+      updatedAt: "2026-01-25T10:00:00.000Z",
     },
   ];
 
@@ -2696,5 +2842,272 @@ export function deleteRefactoringHistoryItem(id: string): void {
   const store = getStore();
   if (!store.refactoringHistory) return;
   store.refactoringHistory = store.refactoringHistory.filter((h: any) => h.id !== id);
+  saveStore(store);
+}
+
+// ==========================================
+// 19. AI Debugger Helpers & Persistence
+// ==========================================
+
+export function getDebugInvestigations(): any[] {
+  const store = getStore();
+  if (!store.debugInvestigations) store.debugInvestigations = [];
+  return store.debugInvestigations;
+}
+
+export function getDebugInvestigation(id: string): any | undefined {
+  const store = getStore();
+  return (store.debugInvestigations || []).find((inv: any) => inv.id === id);
+}
+
+export function saveDebugInvestigation(inv: any): void {
+  const store = getStore();
+  if (!store.debugInvestigations) store.debugInvestigations = [];
+  const existingIdx = store.debugInvestigations.findIndex((i: any) => i.id === inv.id);
+  if (existingIdx !== -1) {
+    store.debugInvestigations[existingIdx] = { ...store.debugInvestigations[existingIdx], ...inv, updatedAt: new Date().toISOString() };
+  } else {
+    store.debugInvestigations.unshift({
+      ...inv,
+      createdAt: inv.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  // Also log activity on creation if not already logged
+  if (existingIdx === -1) {
+    logActivity({
+      type: "debug_investigation_started",
+      title: "Started Investigation",
+      description: `Investigating ${inv.errorType}: ${inv.title.slice(0, 50)}`,
+      href: `/debug?id=${inv.id}`,
+      status: "success",
+    });
+  }
+
+  saveStore(store);
+}
+
+export function deleteDebugInvestigation(id: string): void {
+  const store = getStore();
+  if (!store.debugInvestigations) return;
+  const inv = store.debugInvestigations.find((i: any) => i.id === id);
+  store.debugInvestigations = store.debugInvestigations.filter((i: any) => i.id !== id);
+  if (store.debugFollowUps && store.debugFollowUps[id]) {
+    delete store.debugFollowUps[id];
+  }
+  if (inv) {
+    logActivity({
+      type: "debug_investigation_deleted",
+      title: "Deleted Investigation",
+      description: `Deleted investigation session for ${inv.errorType}.`,
+      href: "/debug",
+      status: "warning",
+    });
+  }
+  saveStore(store);
+}
+
+export function updateInvestigationStatus(id: string, status: string, note?: string): void {
+  const store = getStore();
+  const inv = (store.debugInvestigations || []).find((i: any) => i.id === id);
+  if (inv) {
+    inv.status = status;
+    if (note) inv.resolutionNote = note;
+    inv.updatedAt = new Date().toISOString();
+    logActivity({
+      type: "debug_status_updated",
+      title: status === "resolved" ? "Resolved Error" : "Updated Investigation",
+      description: `Marked investigation as ${status}.${note ? " Note: " + note : ""}`,
+      href: `/debug?id=${id}`,
+      status: "success",
+    });
+    saveStore(store);
+  }
+}
+
+export function toggleHypothesisStatus(
+  invId: string,
+  hypothesisId: string,
+  action: "confirmed" | "ruled_out" | "investigated"
+): void {
+  const store = getStore();
+  const inv = (store.debugInvestigations || []).find((i: any) => i.id === invId);
+  if (!inv || !inv.hypotheses) return;
+
+  const hypo = inv.hypotheses.find((h: any) => h.id === hypothesisId);
+  if (hypo) {
+    if (action === "confirmed") {
+      inv.hypotheses.forEach((h: any) => (h.isConfirmedRootCause = false));
+      hypo.isConfirmedRootCause = true;
+      hypo.isInvestigated = true;
+      inv.confirmedRootCauseId = hypo.id;
+      inv.confirmedRootCauseSummary = hypo.title;
+      inv.status = "root_cause_confirmed";
+    } else if (action === "ruled_out") {
+      hypo.isConfirmedRootCause = false;
+      hypo.isInvestigated = true;
+      hypo.isRuledOut = !hypo.isRuledOut;
+      if (inv.confirmedRootCauseId === hypo.id) {
+        inv.confirmedRootCauseId = undefined;
+        inv.confirmedRootCauseSummary = undefined;
+      }
+    } else if (action === "investigated") {
+      hypo.isInvestigated = !hypo.isInvestigated;
+    }
+    inv.updatedAt = new Date().toISOString();
+    saveStore(store);
+  }
+}
+
+export function applyDebugFixToStore(
+  invId: string,
+  fixId: string
+): { success: boolean; message: string; prId: string; prNumber: number } {
+  const store = getStore();
+  const inv = (store.debugInvestigations || []).find((i: any) => i.id === invId);
+  if (!inv) throw new Error("Investigation session not found");
+
+  const fixes = inv.suggestedFixes || inv.proposedFixes || [];
+  const fix = fixes.find((f: any) => f.id === fixId);
+  if (!fix) throw new Error("Repair fix suggestion not found");
+
+  const repoId = inv.repositoryId || "sample-project";
+
+  // 1. Patch file if available in store.repositoryFiles
+  if (store.repositoryFiles && store.repositoryFiles[repoId] && fix.filePath) {
+    let matchedKey: string | null = null;
+    const files = store.repositoryFiles[repoId];
+    if (files[fix.filePath]) {
+      matchedKey = fix.filePath;
+    } else {
+      const keys = Object.keys(files);
+      for (const k of keys) {
+        if (k.endsWith(fix.filePath) || fix.filePath.endsWith(k) || k.split("/").pop() === fix.filePath.split("/").pop()) {
+          matchedKey = k;
+          break;
+        }
+      }
+    }
+
+    if (matchedKey && files[matchedKey]) {
+      const oldCode = files[matchedKey].code;
+      if (fix.originalSnippet && oldCode.includes(fix.originalSnippet)) {
+        files[matchedKey].code = oldCode.replace(fix.originalSnippet, fix.replacementSnippet);
+      } else {
+        // Line-based replacement if originalSnippet doesn't match directly
+        const lines = oldCode.split("\n");
+        const s = Math.max(0, (fix.startLine || 1) - 1);
+        const e = Math.max(s + 1, (fix.endLine || fix.startLine || 1));
+        lines.splice(s, e - s, fix.replacementSnippet);
+        files[matchedKey].code = lines.join("\n");
+      }
+    }
+  }
+
+  // 2. Create Pull Request
+  if (!store.pullRequests) store.pullRequests = [];
+  const prNum = 100 + store.pullRequests.length + 1;
+  const prId = `pr_${prNum}`;
+
+  const newPr = {
+    id: prId,
+    number: prNum,
+    title: `fix(debug): ${fix.title}`,
+    body: "Automated bug fix generated by CodeAtlas AI Debugger for " + inv.errorType + ": " + inv.title + ".\n\n### Target File: " + fix.filePath + "\n\n### Diff Applied:\n" + (fix.patchDiff || fix.replacementSnippet),
+    author: {
+      name: "AI Debugger",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    baseBranch: "main",
+    headBranch: `fix/debug-${fix.id}`,
+    baseSha: "30e6d94e",
+    headSha: "a8f7b2c1",
+    state: "open",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    additions: 3,
+    deletions: 1,
+    changedFilesCount: 1,
+    files: [
+      {
+        filename: fix.filePath,
+        status: "modified",
+        additions: 3,
+        deletions: 1,
+        changes: 4,
+        patch: fix.patchDiff || `@@ -1,1 +1,3 @@\n+${fix.replacementSnippet}`,
+      },
+    ],
+  };
+
+  store.pullRequests.unshift(newPr);
+
+  // 3. Mark fix applied & investigation resolved
+  fix.isApplied = true;
+  fix.appliedAt = new Date().toISOString();
+  inv.status = "resolved";
+  inv.resolutionNote = `Applied fix "${fix.title}" and opened Pull Request #${prNum}.`;
+  inv.updatedAt = new Date().toISOString();
+
+  // 4. Log to Activity
+  logActivity({
+    type: "debug_fix_applied",
+    title: "Applied Fix",
+    description: `Applied fix "${fix.title}" and opened PR #${prNum}.`,
+    href: `/code-review?pr=${prId}`,
+    status: "success",
+  });
+
+  saveStore(store);
+  return {
+    success: true,
+    message: `Patch applied to ${fix.filePath} and PR #${prNum} opened in Code Review.`,
+    prId,
+    prNumber: prNum,
+  };
+}
+
+export function addTestRecommendationToStore(
+  repoId: string,
+  testPath: string,
+  testCode: string
+): { success: boolean; message: string } {
+  const store = getStore();
+  const targetRepo = repoId || "sample-project";
+  if (!store.repositoryFiles) store.repositoryFiles = {};
+  if (!store.repositoryFiles[targetRepo]) store.repositoryFiles[targetRepo] = {};
+
+  store.repositoryFiles[targetRepo][testPath] = {
+    language: testPath.endsWith(".py") ? "python" : testPath.endsWith(".go") ? "go" : testPath.endsWith(".java") ? "java" : "typescript",
+    code: testCode,
+  };
+
+  logActivity({
+    type: "debug_test_added",
+    title: "Added Test Suite",
+    description: `Added regression test suite to ${testPath}.`,
+    href: `/visual-explorer?repo=${targetRepo}&file=${encodeURIComponent(testPath)}`,
+    status: "success",
+  });
+
+  saveStore(store);
+  return {
+    success: true,
+    message: `Regression test suite saved to ${testPath}.`,
+  };
+}
+
+export function getDebugFollowUps(invId: string): any[] {
+  const store = getStore();
+  if (!store.debugFollowUps) store.debugFollowUps = {};
+  return store.debugFollowUps[invId] || [];
+}
+
+export function addDebugFollowUp(invId: string, followUp: any): void {
+  const store = getStore();
+  if (!store.debugFollowUps) store.debugFollowUps = {};
+  if (!store.debugFollowUps[invId]) store.debugFollowUps[invId] = [];
+  store.debugFollowUps[invId].push(followUp);
   saveStore(store);
 }

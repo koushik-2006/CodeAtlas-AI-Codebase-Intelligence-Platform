@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import {
   Wrench,
   Copy,
@@ -12,6 +13,9 @@ import {
   ShieldAlert,
   ArrowRight,
   RotateCcw,
+  Bot,
+  Split,
+  Columns,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -20,20 +24,28 @@ import { SuggestedFix } from "@/types/debug";
 interface FixSuggestionCardProps {
   fix: SuggestedFix;
   investigationId: string;
+  repositoryId?: string;
   isStandalone: boolean;
-  onApplyPatch: (fixId: string, confirmed: boolean) => Promise<{ success: boolean; message: string }>;
+  onApplyPatch: (fixId: string, confirmed: boolean) => Promise<{ success: boolean; message: string; prId?: string; prNumber?: number }>;
 }
 
 export default function FixSuggestionCard({
   fix,
   investigationId,
+  repositoryId,
   isStandalone,
   onApplyPatch,
 }: FixSuggestionCardProps) {
   const [copied, setCopied] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
-  const [applyResult, setApplyResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [diffMode, setDiffMode] = useState<"unified" | "split">("unified");
+  const [applyResult, setApplyResult] = useState<{
+    success: boolean;
+    message: string;
+    prId?: string;
+    prNumber?: number;
+  } | null>(null);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(fix.patchDiff || fix.replacementSnippet);
@@ -70,6 +82,10 @@ export default function FixSuggestionCard({
     }
   };
 
+  const agentHandoffUrl = `/agents?repo=${encodeURIComponent(repositoryId || "sample-project")}&template=bug-fix&task=${encodeURIComponent(
+    `Fix bug: ${fix.title} in ${fix.filePath} (lines ${fix.startLine}-${fix.endLine})`
+  )}`;
+
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl p-5 shadow-sm space-y-4">
       {/* Header */}
@@ -86,7 +102,7 @@ export default function FixSuggestionCard({
               {getValidationBadge(fix.validationStatus)}
               {fix.isApplied && (
                 <Badge variant="mint">
-                  <CheckCircle2 className="w-3 h-3 mr-0.5" /> Applied
+                  <CheckCircle2 className="w-3 h-3 mr-0.5" /> Fix Applied
                 </Badge>
               )}
             </div>
@@ -96,7 +112,7 @@ export default function FixSuggestionCard({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
@@ -106,7 +122,7 @@ export default function FixSuggestionCard({
             {copied ? (
               <>
                 <Check className="w-3.5 h-3.5 mr-1 text-[#2FD6A0]" />
-                Copied Diff
+                Copied Patch
               </>
             ) : (
               <>
@@ -116,15 +132,24 @@ export default function FixSuggestionCard({
             )}
           </Button>
 
-          {!isStandalone && !fix.isApplied && (
+          <Link
+            href={agentHandoffUrl}
+            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-[#7C5CFC]/30 text-[#7C5CFC] hover:bg-[#7C5CFC]/10 transition-colors"
+            title="Handoff task to autonomous background Agent"
+          >
+            <Bot className="w-3.5 h-3.5" />
+            Fix with Agent
+          </Link>
+
+          {!fix.isApplied && (
             <Button
               variant="primary"
               size="sm"
-              disabled={isApplying || fix.validationStatus !== "validated"}
+              disabled={isApplying}
               onClick={() => setIsConfirming(true)}
-              className="text-xs font-semibold"
+              className="text-xs font-semibold bg-[#7C5CFC] hover:bg-[#6846f9] text-white"
             >
-              Apply Patch Safely
+              Apply Fix
             </Button>
           )}
         </div>
@@ -137,40 +162,84 @@ export default function FixSuggestionCard({
         </p>
       </div>
 
-      {/* Unified Diff Viewer */}
+      {/* Diff View Mode Selector & Previews */}
       <div className="border border-[var(--border-color)] rounded-lg overflow-hidden bg-[var(--bg-primary)]">
         <div className="px-3 py-1.5 border-b border-[var(--border-color)] bg-[var(--bg-card)]/50 text-[10px] font-mono text-[var(--text-secondary)] flex items-center justify-between">
           <span className="flex items-center gap-1.5">
-            <FileCode className="w-3.5 h-3.5 text-[#8B7CFF]" />
-            Proposed Minimal Diff: {fix.filePath}
+            <FileCode className="w-3.5 h-3.5 text-[#7C5CFC]" />
+            Proposed Minimal Repair: {fix.filePath}
           </span>
-          <span>Lines {fix.startLine}-{fix.endLine}</span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setDiffMode("unified")}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 ${
+                diffMode === "unified"
+                  ? "bg-[#7C5CFC] text-white"
+                  : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Split className="w-3 h-3" /> Unified
+            </button>
+            <button
+              type="button"
+              onClick={() => setDiffMode("split")}
+              className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors flex items-center gap-1 ${
+                diffMode === "split"
+                  ? "bg-[#7C5CFC] text-white"
+                  : "bg-[var(--bg-primary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              <Columns className="w-3 h-3" /> Side-by-Side
+            </button>
+          </div>
         </div>
 
-        <pre className="p-3 text-[11px] font-mono leading-relaxed overflow-x-auto">
-          {fix.patchDiff.split("\n").map((line, idx) => {
-            const isAdd = line.startsWith("+") && !line.startsWith("+++");
-            const isDel = line.startsWith("-") && !line.startsWith("---");
-            const isHdr = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
+        {diffMode === "unified" ? (
+          <pre className="p-3 text-[11px] font-mono leading-relaxed overflow-x-auto">
+            {(fix.patchDiff || fix.replacementSnippet).split("\n").map((line, idx) => {
+              const isAdd = line.startsWith("+") && !line.startsWith("+++");
+              const isDel = line.startsWith("-") && !line.startsWith("---");
+              const isHdr = line.startsWith("@@") || line.startsWith("---") || line.startsWith("+++");
 
-            return (
-              <div
-                key={idx}
-                className={`px-2 py-0.5 rounded ${
-                  isAdd
-                    ? "bg-[#2FD6A0]/15 text-[#1BA97B] dark:text-[#2FD6A0] font-semibold"
-                    : isDel
-                    ? "bg-red-500/15 text-red-500 font-semibold"
-                    : isHdr
-                    ? "text-[#8B7CFF] font-bold"
-                    : "text-[var(--text-primary)]"
-                }`}
-              >
-                {line || " "}
+              return (
+                <div
+                  key={idx}
+                  className={`px-2 py-0.5 rounded ${
+                    isAdd
+                      ? "bg-[#2FD6A0]/15 text-[#1BA97B] dark:text-[#2FD6A0] font-semibold"
+                      : isDel
+                      ? "bg-red-500/15 text-red-500 font-semibold"
+                      : isHdr
+                      ? "text-[#7C5CFC] font-bold"
+                      : "text-[var(--text-primary)]"
+                  }`}
+                >
+                  {line || " "}
+                </div>
+              );
+            })}
+          </pre>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[var(--border-color)] p-3 text-[11px] font-mono leading-relaxed">
+            <div>
+              <div className="text-[10px] uppercase font-bold text-red-500 mb-1">
+                Original Code (Before)
               </div>
-            );
-          })}
-        </pre>
+              <pre className="bg-red-500/5 p-2.5 rounded text-red-400 overflow-x-auto whitespace-pre-wrap">
+                {fix.originalSnippet || "// target execution line"}
+              </pre>
+            </div>
+            <div className="pt-2 md:pt-0 md:pl-3">
+              <div className="text-[10px] uppercase font-bold text-[#2FD6A0] mb-1">
+                Proposed Replacement (After)
+              </div>
+              <pre className="bg-[#2FD6A0]/5 p-2.5 rounded text-[#1BA97B] dark:text-[#2FD6A0] overflow-x-auto whitespace-pre-wrap">
+                {fix.replacementSnippet}
+              </pre>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Side Effects and Assumptions */}
@@ -181,21 +250,25 @@ export default function FixSuggestionCard({
             Potential Side Effects
           </h4>
           <ul className="space-y-1 text-[var(--text-secondary)] list-disc list-inside">
-            {fix.potentialSideEffects.map((se, i) => (
-              <li key={i}>{se}</li>
-            ))}
+            {fix.potentialSideEffects && fix.potentialSideEffects.length > 0 ? (
+              fix.potentialSideEffects.map((se, i) => <li key={i}>{se}</li>)
+            ) : (
+              <li className="italic">No negative side effects identified.</li>
+            )}
           </ul>
         </div>
 
         <div className="bg-[var(--bg-primary)]/50 border border-[var(--border-color)] rounded-lg p-3">
           <h4 className="text-[11px] font-bold uppercase tracking-wider text-[var(--text-secondary)] mb-1.5 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3 text-[#8B7CFF]" />
+            <ShieldCheck className="w-3 h-3 text-[#7C5CFC]" />
             Assumptions to Verify
           </h4>
           <ul className="space-y-1 text-[var(--text-secondary)] list-disc list-inside">
-            {fix.assumptions.map((as, i) => (
-              <li key={i}>{as}</li>
-            ))}
+            {fix.assumptions && fix.assumptions.length > 0 ? (
+              fix.assumptions.map((as, i) => <li key={i}>{as}</li>)
+            ) : (
+              <li className="italic">Standard execution assumptions apply.</li>
+            )}
           </ul>
         </div>
       </div>
@@ -207,12 +280,10 @@ export default function FixSuggestionCard({
             <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
             <div>
               <h4 className="text-xs font-bold text-amber-500">
-                Confirm Safe Patch Application
+                Confirm Safe Patch Application & Pull Request Creation
               </h4>
               <p className="text-xs text-[var(--text-primary)] mt-1">
-                This will modify <code className="font-mono text-[#8B7CFF]">{fix.filePath}</code> in your repository.
-                An automatic pre-patch backup will be stored before lines {fix.startLine}-{fix.endLine} are replaced.
-                No arbitrary code will be executed on the server.
+                Applying this fix will patch <code className="font-mono text-[#7C5CFC]">{fix.filePath}</code> in your repository files, automatically open a Pull Request in Code Review, and mark this investigation as Resolved.
               </p>
             </div>
           </div>
@@ -232,9 +303,9 @@ export default function FixSuggestionCard({
               size="sm"
               disabled={isApplying}
               onClick={handleApply}
-              className="text-xs bg-amber-600 hover:bg-amber-700 text-white"
+              className="text-xs bg-amber-600 hover:bg-amber-700 text-white font-semibold"
             >
-              {isApplying ? "Applying Safely..." : "Yes, Apply Patch"}
+              {isApplying ? "Applying Patch..." : "Yes, Apply Fix & Create PR"}
             </Button>
           </div>
         </div>
@@ -243,18 +314,30 @@ export default function FixSuggestionCard({
       {/* Applied Result Banner */}
       {applyResult && (
         <div
-          className={`p-3 rounded-lg text-xs flex items-center gap-2 ${
+          className={`p-3.5 rounded-lg text-xs flex items-center justify-between gap-3 ${
             applyResult.success
               ? "bg-[#2FD6A0]/15 text-[#1BA97B] dark:text-[#2FD6A0] border border-[#2FD6A0]/30"
               : "bg-red-500/15 text-red-500 border border-red-500/30"
           }`}
         >
-          {applyResult.success ? (
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 shrink-0" />
+          <div className="flex items-center gap-2">
+            {applyResult.success ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+            )}
+            <span className="font-medium">{applyResult.message}</span>
+          </div>
+
+          {applyResult.prId && (
+            <Link
+              href={`/code-review?pr=${applyResult.prId}`}
+              className="inline-flex items-center gap-1 font-bold underline shrink-0 hover:opacity-80"
+            >
+              <span>View PR #{applyResult.prNumber}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           )}
-          <span>{applyResult.message}</span>
         </div>
       )}
     </div>

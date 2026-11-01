@@ -58,6 +58,7 @@ export interface InvestigationHypothesis {
   categoryLabel: string;
   explanation: string;
   likelihood: "high" | "medium" | "low";
+  confidenceScore?: number;
   supportingEvidence: string[];
   counterEvidence: string[];
   suggestedSteps: string[];
@@ -71,6 +72,7 @@ export interface InvestigationHypothesis {
   }[];
   isInvestigated: boolean;
   isConfirmedRootCause: boolean;
+  isRuledOut?: boolean;
   investigatedAt?: string;
 }
 
@@ -151,14 +153,23 @@ export interface DbDebugInvestigation {
   actualBehavior?: string;
   runtime: StackTraceRuntime;
   parsedTrace?: ParsedStackTrace;
+  parsedFrames?: ParsedStackFrame[];
   observedEvidence: ObservedEvidence;
   hypotheses: InvestigationHypothesis[];
   confirmedRootCauseId?: string;
   confirmedRootCauseSummary?: string;
   suggestedFixes: SuggestedFix[];
+  proposedFixes?: SuggestedFix[];
   testRecommendations: TestRecommendation[];
   unresolvedQuestions: string[];
   isRevisionStale?: boolean;
+  resolutionNote?: string;
+  environment?: {
+    os?: string;
+    browser?: string;
+    runtimeVersion?: string;
+    commitHash?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -188,6 +199,12 @@ export interface DebugInvestigateRequest {
   actualBehavior?: string;
   revision?: string;
   workspaceId?: string;
+  environment?: {
+    os?: string;
+    browser?: string;
+    runtimeVersion?: string;
+    commitHash?: string;
+  };
 }
 
 export interface DebugFollowUpRequest {
