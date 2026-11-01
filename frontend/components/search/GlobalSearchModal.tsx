@@ -188,6 +188,9 @@ export function GlobalSearchModal({ isOpen, onClose, defaultCategory }: GlobalSe
 
       {/* Palette Modal */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global Codebase Search"
         onKeyDown={handleKeyDown}
         className={`relative w-full max-w-2xl rounded-2xl sm:rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in fade-in zoom-in-95 duration-200 ${
           isDark

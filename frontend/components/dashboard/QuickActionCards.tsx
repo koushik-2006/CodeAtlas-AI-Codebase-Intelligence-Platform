@@ -18,7 +18,10 @@ interface QuickActionCardsProps {
   activeRepoId?: string;
 }
 
-export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-project" }: QuickActionCardsProps) {
+export function QuickActionCards({
+  onConnectGitHub,
+  activeRepoId = "sample-project",
+}: QuickActionCardsProps) {
   const { theme } = useTheme();
   const isDark = theme === "dark";
 
@@ -35,11 +38,11 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
     },
     {
       step: "02 — CODELENS",
-      title: "Visual Code Explorer",
-      desc: "Paste code snippets, upload screenshots, or extract source code via OCR.",
+      title: "Explain Code Snippet",
+      desc: "Paste code snippets, inspect call flows, or extract source logic with interactive lenses.",
       icon: ScanSearch,
       tint: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-      buttonText: "Open CodeLens",
+      buttonText: "Explain Snippet",
       href: "/visual-explorer",
     },
     {
@@ -48,8 +51,8 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
       desc: "Query the codebase and receive verified answers with clickable file and line citations.",
       icon: Sparkles,
       tint: "bg-purple-500/10 text-purple-500 border-purple-500/20",
-      buttonText: "Ask Question",
-      href: `/assistant?repoId=${activeRepoId}&q=${encodeURIComponent("How does authentication work?")}`,
+      buttonText: "Ask AI Assistant",
+      href: `/assistant?repoId=${activeRepoId}`,
     },
     {
       step: "04 — TOPOLOGY",
@@ -57,7 +60,7 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
       desc: "Visualize multi-tier dependency graphs, entrypoint callers, and external service contracts.",
       icon: Network,
       tint: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
-      buttonText: "View City Graph",
+      buttonText: "Explore Architecture",
       href: `/architecture?repoId=${activeRepoId}`,
     },
     {
@@ -66,7 +69,7 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
       desc: "Calculate upstream dependencies and downstream breakages before deploying changes.",
       icon: GitCompare,
       tint: "bg-amber-500/10 text-amber-500 border-amber-500/20",
-      buttonText: "Analyze Impact",
+      buttonText: "Analyze Change Impact",
       href: `/change-impact?repoId=${activeRepoId}`,
     },
     {
@@ -75,7 +78,7 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
       desc: "Automate code reviews, detect security flaws, and identify untested logic branches.",
       icon: GitPullRequest,
       tint: "bg-rose-500/10 text-rose-500 border-rose-500/20",
-      buttonText: "Review PR #101",
+      buttonText: "Review Pull Request",
       href: `/code-review?repoId=${activeRepoId}&pr=101`,
     },
   ];
@@ -89,7 +92,7 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
             key={card.step}
             whileHover={{ y: -3 }}
             transition={{ duration: 0.2 }}
-            className={`flex flex-col justify-between rounded-2xl p-5 sm:p-6 transition-all duration-200 border h-full min-h-[200px] ${
+            className={`flex flex-col justify-between rounded-2xl p-5 sm:p-6 transition-all duration-200 border h-full min-h-[210px] ${
               isDark
                 ? "bg-[#0D111B] border-[#242B39] hover:border-[#7C5CFC]/50 hover:shadow-[0_0_25px_-5px_rgba(124,92,252,0.18)]"
                 : "bg-white border-[#E8E5F4] shadow-sm hover:border-[#7C5CFC]/40 hover:shadow-[0_4px_20px_-4px_rgba(124,92,252,0.12)]"
@@ -113,12 +116,13 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
               </p>
             </div>
 
-            <div className="mt-5 flex justify-end pt-2 border-t border-[var(--border-color)]/60">
+            <div className="mt-5 flex justify-end pt-2.5 border-t border-[var(--border-color)]/60">
               {card.onClick ? (
                 <button
                   type="button"
                   onClick={card.onClick}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1 py-0.5"
+                  aria-label={card.buttonText}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1.5 py-1"
                 >
                   <span>{card.buttonText}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -126,7 +130,8 @@ export function QuickActionCards({ onConnectGitHub, activeRepoId = "sample-proje
               ) : (
                 <Link
                   href={card.href}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1 py-0.5"
+                  aria-label={card.buttonText}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-[var(--primary)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1.5 py-1"
                 >
                   <span>{card.buttonText}</span>
                   <ArrowRight className="w-3.5 h-3.5" />

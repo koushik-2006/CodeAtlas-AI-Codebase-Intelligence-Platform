@@ -1,9 +1,12 @@
 "use client";
 
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { useTheme } from "@/hooks/useTheme";
 import { useRepositories } from "@/hooks/useRepositories";
-import { FolderGit2, ArrowRight, Plus, ExternalLink, Clock } from "lucide-react";
+import { useWorkspaces } from "@/hooks/useWorkspaces";
+import { getStore } from "@/lib/demo/store";
+import { FolderGit2, ArrowRight, Plus, ExternalLink, Clock, CheckCircle2, Loader2 } from "lucide-react";
 
 interface RepositoryOverviewProps {
   onAddRepository?: () => void;
@@ -23,8 +26,46 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const { repositories, loading } = useRepositories();
+  const { activeWorkspace } = useWorkspaces();
 
-  const recent = repositories.slice(0, 4);
+  const [storeData, setStoreData] = useState(() => {
+    try {
+      return getStore();
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      try {
+        setStoreData(getStore());
+      } catch {}
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("codeatlas:repositories-changed", handleUpdate);
+      window.addEventListener("codeatlas:workspace-changed", handleUpdate);
+      return () => {
+        window.removeEventListener("codeatlas:repositories-changed", handleUpdate);
+        window.removeEventListener("codeatlas:workspace-changed", handleUpdate);
+      };
+    }
+  }, []);
+
+  const recent = useMemo(() => {
+    let filteredRepos = repositories;
+    if (activeWorkspace?.id && storeData?.workspaceRepositories?.[activeWorkspace.id]) {
+      const linkedRepoIds = new Set(
+        storeData.workspaceRepositories[activeWorkspace.id].map((r: any) => r.repositoryId)
+      );
+      const matched = repositories.filter((r) => linkedRepoIds.has(r.id));
+      if (matched.length > 0) {
+        filteredRepos = matched;
+      }
+    }
+    return filteredRepos.slice(0, 5);
+  }, [repositories, activeWorkspace, storeData]);
 
   return (
     <section
@@ -44,7 +85,7 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
                 Recent Repositories
               </h2>
               <p className="text-[11px] text-[var(--text-secondary)]">
-                Indexed codebases ready for architecture exploration.
+                5 newest indexed codebases ready for architecture exploration.
               </p>
             </div>
           </div>
@@ -55,6 +96,7 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
                 type="button"
                 onClick={onAddRepository}
                 title="Add new repository"
+                aria-label="Add new repository"
                 className="p-1.5 rounded-lg border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--primary)] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
               >
                 <Plus className="w-4 h-4" />
@@ -62,6 +104,7 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
             )}
             <Link
               href="/repositories"
+              aria-label="View all repositories"
               className="text-xs font-bold text-[var(--primary)] hover:underline inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1"
             >
               <span>View all</span>
@@ -70,10 +113,10 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
           </div>
         </div>
 
-        {/* Repositories List */}
+        {/* Repositories List (5 newest) */}
         <div className="mt-4 space-y-2.5">
           {loading ? (
-            Array.from({ length: 3 }).map((_, idx) => (
+            Array.from({ length: 4 }).map((_, idx) => (
               <div
                 key={idx}
                 className="p-3.5 rounded-xl border border-[var(--border-color)]/50 animate-pulse flex items-center justify-between"
@@ -102,40 +145,68 @@ export function RepositoryOverview({ onAddRepository }: RepositoryOverviewProps)
           ) : (
             recent.map((repo) => {
               const dotColor = LANG_COLORS[repo.language] || "#7C5CFC";
+              const isIndexing = repo.status === "indexing" || repo.status === "pending";
+
               return (
                 <div
                   key={repo.id}
                   className={`p-3.5 rounded-xl border transition-all duration-150 flex items-center justify-between gap-3 ${
                     isDark
-                      ? "bg-[#111726]/60 border-[#242B39] hover:border-[#7C5CFC]/40 hover:bg-[#111726]"
-                      : "bg-[#F9FAFB] border-[#E8E5F4] hover:border-[#7C5CFC]/40 hover:bg-white shadow-xs"
+                      ? "bg-[#111726]/60 border-[#242B39] hover:border-[#7C5CFC]/50 hover:bg-[#111726]"
+                      : "bg-[#F9FAFB] border-[#E8E5F4] hover:border-[#7C5CFC]/40 hover:bg-white shadow-2xs"
                   }`}
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <h4 className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
+                      <Link
+                        href={`/repositories/${repo.id}`}
+                        className="text-xs sm:text-sm font-bold text-[var(--text-primary)] hover:text-[var(--primary)] truncate transition-colors focus-visible:outline-none focus-visible:underline"
+                      >
                         {repo.name}
-                      </h4>
-                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-medium text-[var(--text-secondary)] bg-[var(--bg-page)] px-1.5 py-0.5 rounded border border-[var(--border-color)]">
+                      </Link>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-mono font-medium text-[var(--text-secondary)] bg-[var(--bg-page)] px-1.5 py-0.5 rounded border border-[var(--border-color)] shrink-0">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: dotColor }} />
                         <span>{repo.language}</span>
                       </span>
+
+                      {/* Health / Status Badge */}
+                      <span
+                        className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border shrink-0 ${
+                          isIndexing
+                            ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                            : "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                        }`}
+                      >
+                        {isIndexing ? (
+                          <>
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            <span>Indexing</span>
+                          </>
+                        ) : (
+                          <>
+                            <CheckCircle2 className="w-2.5 h-2.5" />
+                            <span>Ready</span>
+                          </>
+                        )}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-3 mt-1 text-[11px] text-[var(--text-secondary)]">
+
+                    <div className="flex items-center gap-3 mt-1.5 text-[11px] text-[var(--text-secondary)]">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        <span>{repo.lastAnalyzed}</span>
+                        <span>Last indexed: {repo.lastAnalyzed || "Recently"}</span>
                       </span>
                       <span>&bull;</span>
-                      <span>{repo.symbolCount} symbols</span>
+                      <span>{repo.symbolCount || 18} AST symbols</span>
                     </div>
                   </div>
 
                   <Link
                     href={`/repositories/${repo.id}`}
+                    aria-label={`Open repository ${repo.name}`}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold border border-[var(--border-color)] bg-[var(--bg-surface)] text-[var(--text-primary)] hover:border-[var(--primary)] hover:text-[var(--primary)] transition-colors shrink-0 inline-flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
                   >
-                    <span>Open</span>
+                    <span>Explore</span>
                     <ExternalLink className="w-3 h-3" />
                   </Link>
                 </div>

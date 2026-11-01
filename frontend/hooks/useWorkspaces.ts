@@ -55,12 +55,27 @@ export function useWorkspaces() {
 
   useEffect(() => {
     fetchWorkspaces();
+
+    const handleWorkspaceChanged = (e: any) => {
+      const newId = e?.detail?.workspaceId;
+      if (newId && typeof newId === "string") {
+        setActiveWorkspaceIdState(newId);
+      }
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("codeatlas:workspace-changed", handleWorkspaceChanged);
+      return () => {
+        window.removeEventListener("codeatlas:workspace-changed", handleWorkspaceChanged);
+      };
+    }
   }, [fetchWorkspaces]);
 
   const setActiveWorkspaceId = useCallback((id: string) => {
     setActiveWorkspaceIdState(id);
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_KEY, id);
+      window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: id } }));
     }
   }, []);
 

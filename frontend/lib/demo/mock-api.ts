@@ -2188,40 +2188,124 @@ export async function handleMockRequest(
   }
 
   if (cleanPath === "/api/search") {
-    const q = (searchParams.get("q") || "").toLowerCase();
-    const matches = [
+    const q = (searchParams.get("q") || "").toLowerCase().trim();
+    const allItems: any[] = [];
+
+    // 1. Pages
+    const pages = [
+      { id: "p-overview", title: "Overview Dashboard", subtitle: "System summary and KPIs", category: "architecture", href: "/dashboard", badge: "Page" },
+      { id: "p-repos", title: "Repositories", subtitle: "Browse and index connected codebases", category: "repository", href: "/repositories", badge: "Page" },
+      { id: "p-workspaces", title: "Team Workspaces", subtitle: "Collaborative multi-repo spaces", category: "architecture", href: "/workspaces", badge: "Page" },
+      { id: "p-assistant", title: "AI Assistant", subtitle: "Ask code questions with grounded citations", category: "symbol", href: "/assistant", badge: "AI" },
+      { id: "p-architecture", title: "Architecture Graph", subtitle: "Multi-tier dependency topology", category: "architecture", href: "/architecture", badge: "Visual" },
+      { id: "p-review", title: "Code Review", subtitle: "Pull request security & correctness audits", category: "review", href: "/code-review", badge: "Review" },
+      { id: "p-debug", title: "AI Debugger", subtitle: "Stack trace and hypothesis resolution", category: "symbol", href: "/debug", badge: "Debug" },
+      { id: "p-refactor", title: "Refactoring & Debt", subtitle: "Cyclomatic complexity and debt reduction", category: "symbol", href: "/refactoring", badge: "Quality" },
+      { id: "p-health", title: "System Health & Operations", subtitle: "Telemetry, circuit breakers and alerts", category: "api", href: "/system-health", badge: "Ops" },
+      { id: "p-settings", title: "Settings", subtitle: "Preferences and connected accounts", category: "doc", href: "/settings", badge: "Settings" },
+    ];
+    allItems.push(...pages);
+
+    // 2. Repositories
+    (store.repositories || []).forEach((r) => {
+      allItems.push({
+        id: `repo-${r.id}`,
+        title: r.name,
+        subtitle: `${r.language || "Codebase"} • ${r.description || "Connected repository"}`,
+        category: "repository",
+        repositoryId: r.id,
+        repositoryName: r.name,
+        href: `/repositories/${r.id}`,
+        badge: r.language || "Repo",
+      });
+    });
+
+    // 3. Workspaces
+    (store.workspaces || []).forEach((w) => {
+      allItems.push({
+        id: `ws-${w.id}`,
+        title: w.name,
+        subtitle: w.description || "Team workspace",
+        category: "architecture",
+        href: `/workspaces/${w.id}`,
+        badge: "Workspace",
+      });
+    });
+
+    // 4. Code Symbols & Files
+    const symbols = [
       {
-        title: "loginUser",
-        type: "symbol",
+        id: "sym-loginuser",
+        title: "loginUser(email, password)",
+        subtitle: "src/services/auth.ts:18",
+        category: "symbol",
+        repositoryId: "sample-project",
+        repositoryName: "demo-auth-service",
         filePath: "src/services/auth.ts",
         line: 18,
-        description: "Primary authentication handler function",
-        preview: "export async function loginUser(email, password) { ... }",
+        matchSnippet: "export async function loginUser(email, password) { ... }",
+        href: "/repositories/sample-project?file=src/services/auth.ts&line=18",
+        badge: "Function",
       },
       {
-        title: "LoginForm",
-        type: "component",
+        id: "sym-loginform",
+        title: "LoginForm()",
+        subtitle: "src/components/LoginForm.tsx:1",
+        category: "file",
+        repositoryId: "sample-project",
+        repositoryName: "demo-auth-service",
         filePath: "src/components/LoginForm.tsx",
         line: 1,
-        description: "React client form component",
-        preview: "export function LoginForm() { ... }",
+        matchSnippet: "export function LoginForm() { ... }",
+        href: "/repositories/sample-project?file=src/components/LoginForm.tsx&line=1",
+        badge: "Component",
       },
       {
-        title: "validateEmail",
-        type: "symbol",
+        id: "sym-validateemail",
+        title: "validateEmail(email)",
+        subtitle: "src/utils/validation.ts:4",
+        category: "symbol",
+        repositoryId: "sample-project",
+        repositoryName: "demo-auth-service",
         filePath: "src/utils/validation.ts",
         line: 4,
-        description: "Email regex validation routine",
-        preview: "export function validateEmail(email: string): boolean { ... }",
+        matchSnippet: "export function validateEmail(email: string): boolean { ... }",
+        href: "/repositories/sample-project?file=src/utils/validation.ts&line=4",
+        badge: "Function",
       },
-    ].filter((m) => !q || m.title.toLowerCase().includes(q) || m.filePath.toLowerCase().includes(q));
+      {
+        id: "pr-101",
+        title: "PR #101: WebAuthn passkey support",
+        subtitle: "Elena Rostova • 3 files changed",
+        category: "review",
+        repositoryId: "sample-project",
+        href: "/code-review?pr=101",
+        badge: "Pull Request",
+      },
+    ];
+    allItems.push(...symbols);
+
+    const filtered = allItems.filter(
+      (item) =>
+        !q ||
+        item.title.toLowerCase().includes(q) ||
+        item.subtitle.toLowerCase().includes(q) ||
+        (item.filePath && item.filePath.toLowerCase().includes(q))
+    );
 
     return {
       success: true,
       data: {
         query: q,
-        total: matches.length,
-        results: matches,
+        total: filtered.length,
+        results: filtered,
+        categories: [
+          { category: "all", label: "All Results", count: filtered.length },
+          { category: "repository", label: "Repositories", count: filtered.filter((i) => i.category === "repository").length },
+          { category: "file", label: "Files", count: filtered.filter((i) => i.category === "file").length },
+          { category: "symbol", label: "Symbols", count: filtered.filter((i) => i.category === "symbol").length },
+        ],
+        recentSearches: ["loginUser", "auth.ts", "PR #101", "Architecture Graph"],
       },
       timestamp,
     };

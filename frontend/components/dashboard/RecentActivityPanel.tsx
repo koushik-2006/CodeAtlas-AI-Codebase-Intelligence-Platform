@@ -16,6 +16,7 @@ import {
   Network,
   ArrowRight,
   Clock,
+  CheckCircle2,
 } from "lucide-react";
 
 function formatRelativeTime(dateString: string): string {
@@ -55,29 +56,90 @@ export function RecentActivityPanel() {
 
   useEffect(() => {
     loadActivities();
+
+    const handleUpdate = () => {
+      loadActivities();
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("codeatlas:repositories-changed", handleUpdate);
+      window.addEventListener("codeatlas:workspace-changed", handleUpdate);
+      return () => {
+        window.removeEventListener("codeatlas:repositories-changed", handleUpdate);
+        window.removeEventListener("codeatlas:workspace-changed", handleUpdate);
+      };
+    }
   }, []);
 
   const getEventMeta = (type: DbActivityEvent["type"]) => {
     switch (type) {
       case "repo_connected":
       case "repo_disconnected":
-        return { icon: FolderGit2, tint: "bg-[#7C5CFC]/10 text-[#7C5CFC] border-[#7C5CFC]/20" };
+        return {
+          icon: FolderGit2,
+          tint: "bg-[#7C5CFC]/10 text-[#7C5CFC] border-[#7C5CFC]/20",
+          badgeText: "Connected",
+          badgeColor: "bg-[#7C5CFC]/10 text-[#7C5CFC] border-[#7C5CFC]/20",
+          defaultHref: "/repositories",
+        };
       case "indexing_completed":
       case "indexing_failed":
-        return { icon: GitBranch, tint: "bg-blue-500/10 text-blue-500 border-blue-500/20" };
+        return {
+          icon: GitBranch,
+          tint: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+          badgeText: "Indexed",
+          badgeColor: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+          defaultHref: "/repositories/sample-project",
+        };
       case "code_explained":
-        return { icon: ScanSearch, tint: "bg-amber-500/10 text-amber-500 border-amber-500/20" };
+        return {
+          icon: ScanSearch,
+          tint: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+          badgeText: "CodeLens",
+          badgeColor: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+          defaultHref: "/visual-explorer",
+        };
       case "question_answered":
-        return { icon: Sparkles, tint: "bg-purple-500/10 text-purple-500 border-purple-500/20" };
+        return {
+          icon: Sparkles,
+          tint: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+          badgeText: "AI Verified",
+          badgeColor: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+          defaultHref: "/assistant",
+        };
       case "architecture_explored":
-        return { icon: Network, tint: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20" };
+        return {
+          icon: Network,
+          tint: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+          badgeText: "Topology",
+          badgeColor: "bg-cyan-500/10 text-cyan-500 border-cyan-500/20",
+          defaultHref: "/architecture",
+        };
       case "impact_analyzed":
-        return { icon: GitCompare, tint: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" };
+        return {
+          icon: GitCompare,
+          tint: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+          badgeText: "Impact Proof",
+          badgeColor: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+          defaultHref: "/change-impact",
+        };
       case "review_completed":
       case "finding_reviewed":
-        return { icon: GitPullRequest, tint: "bg-rose-500/10 text-rose-500 border-rose-500/20" };
+        return {
+          icon: GitPullRequest,
+          tint: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+          badgeText: "Audited",
+          badgeColor: "bg-rose-500/10 text-rose-500 border-rose-500/20",
+          defaultHref: "/code-review?repoId=sample-project&pr=101",
+        };
       default:
-        return { icon: History, tint: "bg-gray-500/10 text-gray-500 border-gray-500/20" };
+        return {
+          icon: History,
+          tint: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+          badgeText: "Event",
+          badgeColor: "bg-gray-500/10 text-gray-500 border-gray-500/20",
+          defaultHref: "/activity",
+        };
     }
   };
 
@@ -104,6 +166,7 @@ export function RecentActivityPanel() {
 
         <Link
           href="/activity"
+          aria-label="View all activities"
           className="text-xs font-bold text-[var(--primary)] hover:underline inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] rounded-md px-1"
         >
           <span>View all</span>
@@ -135,16 +198,18 @@ export function RecentActivityPanel() {
       ) : (
         <div className="mt-4 space-y-2.5">
           {activities.map((item) => {
-            const { icon: EventIcon, tint } = getEventMeta(item.type);
+            const { icon: EventIcon, tint, badgeText, badgeColor, defaultHref } = getEventMeta(item.type);
             const timeAgo = formatRelativeTime(item.timestamp);
 
             return (
-              <div
+              <Link
                 key={item.id}
-                className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all duration-150 ${
+                href={defaultHref}
+                aria-label={`Activity: ${item.title}`}
+                className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all duration-150 group ${
                   isDark
-                    ? "bg-[#111726]/50 border-[#242B39] hover:bg-[#111726] hover:border-[#7C5CFC]/40"
-                    : "bg-[#F9FAFB] border-[#E8E5F4] hover:bg-white hover:border-[#7C5CFC]/40 shadow-xs"
+                    ? "bg-[#111726]/50 border-[#242B39] hover:bg-[#111726] hover:border-[#7C5CFC]/50"
+                    : "bg-[#F9FAFB] border-[#E8E5F4] hover:bg-white hover:border-[#7C5CFC]/40 shadow-2xs"
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -152,20 +217,28 @@ export function RecentActivityPanel() {
                     <EventIcon className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-bold text-[var(--text-primary)] truncate">
-                      {item.title}
-                    </p>
-                    <p className="text-[11px] text-[var(--text-secondary)] truncate">
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs sm:text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--primary)] transition-colors truncate">
+                        {item.title}
+                      </p>
+                      <span className={`inline-flex items-center text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ${badgeColor}`}>
+                        {badgeText}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-secondary)] truncate mt-0.5">
                       {item.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-secondary)] shrink-0">
-                  <Clock className="w-3 h-3" />
-                  <span>{timeAgo}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 text-[11px] font-mono text-[var(--text-secondary)]">
+                    <Clock className="w-3 h-3" />
+                    <span>{timeAgo}</span>
+                  </div>
+                  <ArrowRight className="w-3.5 h-3.5 text-[var(--primary)] opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>

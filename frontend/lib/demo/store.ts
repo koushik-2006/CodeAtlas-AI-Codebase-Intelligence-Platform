@@ -1308,3 +1308,4 @@ export function addRepository(repo: any): any {
   saveStore(store);
   return newRepo;
 }
+

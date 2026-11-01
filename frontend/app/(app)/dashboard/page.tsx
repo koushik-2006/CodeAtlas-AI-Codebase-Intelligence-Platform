@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { WelcomeSection } from "@/components/dashboard/WelcomeSection";
 import { DashboardKPIRow } from "@/components/dashboard/DashboardKPIRow";
 import { CodebaseMetricsBar } from "@/components/dashboard/CodebaseMetricsBar";
 import { QuickActionCards } from "@/components/dashboard/QuickActionCards";
 import { RepositoryOverview } from "@/components/dashboard/RepositoryOverview";
 import { GettingStartedChecklist } from "@/components/dashboard/GettingStartedChecklist";
+import { NeedsAttentionSection } from "@/components/dashboard/NeedsAttentionSection";
 import { RecentActivityPanel } from "@/components/dashboard/RecentActivityPanel";
 import { AddRepositoryDialog } from "@/components/repositories/AddRepositoryDialog";
 import { useRepositories } from "@/hooks/useRepositories";
@@ -14,6 +16,7 @@ import { CheckCircle2, AlertCircle, X } from "lucide-react";
 import { motion } from "framer-motion";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const [isAddRepoOpen, setIsAddRepoOpen] = useState(false);
   const [oauthNotice, setOauthNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const { repositories, addRepository } = useRepositories();
@@ -63,8 +66,13 @@ export default function DashboardPage() {
 
     setOauthNotice({
       type: "success",
-      text: `Repository "${name}" queued for indexing! Parsing AST symbols and extracting call-graph connections.`,
+      text: `Repository "${name}" queued for indexing! Redirecting to repositories view.`,
     });
+
+    // Navigate to /repositories after adding repository
+    setTimeout(() => {
+      router.push("/repositories");
+    }, 600);
   };
 
   return (
@@ -103,13 +111,13 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 1. Header: Greeting, Avatar, Date, Subtitle, Add Repo & Ask AI */}
+      {/* 1. Header: Greeting, Avatar, Date, Workspace Switcher, Add Repo & Ask AI */}
       <WelcomeSection onAddRepository={() => setIsAddRepoOpen(true)} />
 
-      {/* 2. KPI Row: Repositories, Files indexed, AST symbols, Open findings */}
+      {/* 2. KPI Row: Repositories, Files indexed, AST symbols, Open findings, Tech-debt score, System health */}
       <DashboardKPIRow />
 
-      {/* 3. Language & Architecture Bar with Tooltips & Percentages */}
+      {/* 3. Language & Architecture Bar with Tooltips & Percentages (Clickable to filter) */}
       <CodebaseMetricsBar />
 
       {/* 4. Quick Actions Grid (6 cards, consistent height, tinted square icon, bottom-right button) */}
@@ -124,7 +132,10 @@ export default function DashboardPage() {
         <GettingStartedChecklist />
       </div>
 
-      {/* 6. Recent Activity Timeline Panel */}
+      {/* 6. Needs Attention Section: Top 3 open high-severity findings/issues with working "Fix" action links */}
+      <NeedsAttentionSection />
+
+      {/* 7. Recent Activity Timeline Panel: Relative timestamps, status badges, clickable links */}
       <RecentActivityPanel />
 
       {/* Add Repository Modal */}

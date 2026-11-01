@@ -230,20 +230,31 @@ export default nextConfig;
     fs.writeFileSync(tempLayoutPath, layoutContent, "utf-8");
   }
 
-  // 5c. Pre-create all mirrored route directories in .next/server/app to prevent Windows mkdir contention
-  function mirrorRouteDirs(sourceDir: string, targetBase: string) {
+  // 5c. Pre-create all mirrored route directories (with and without route groups) to prevent Windows mkdir contention
+  function mirrorRouteDirs(sourceDir: string, relPath: string, targetBases: string[]) {
     if (!fs.existsSync(sourceDir)) return;
     const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isDirectory()) {
-        const destDir = path.join(targetBase, entry.name);
-        try { fs.mkdirSync(destDir, { recursive: true }); } catch {}
-        mirrorRouteDirs(path.join(sourceDir, entry.name), destDir);
+        const childRelPath = relPath ? path.join(relPath, entry.name) : entry.name;
+        const unGroupedPath = childRelPath.split(/[\/\\]/).filter((part) => !/^\(.*\)$/.test(part)).join(path.sep);
+
+        for (const targetBase of targetBases) {
+          try { fs.mkdirSync(path.join(targetBase, childRelPath), { recursive: true }); } catch {}
+          if (unGroupedPath) {
+            try { fs.mkdirSync(path.join(targetBase, unGroupedPath), { recursive: true }); } catch {}
+          }
+        }
+        mirrorRouteDirs(path.join(sourceDir, entry.name), childRelPath, targetBases);
       }
     }
   }
-  mirrorRouteDirs(path.join(tempWorkspace, "app"), path.join(tempWorkspace, ".next", "server", "app"));
-  mirrorRouteDirs(path.join(tempWorkspace, "app"), path.join(tempWorkspace, ".next", "types", "app"));
+  const targetBases = [
+    path.join(tempWorkspace, ".next", "server", "app"),
+    path.join(tempWorkspace, ".next", "types", "app"),
+  ];
+  targetBases.forEach((b) => { try { fs.mkdirSync(b, { recursive: true }); } catch {} });
+  mirrorRouteDirs(path.join(tempWorkspace, "app"), "", targetBases);
 
   // 6. Run Next.js static build using local binary
   console.log("⚙️  Running Next.js static export build (STATIC_EXPORT=true)...");

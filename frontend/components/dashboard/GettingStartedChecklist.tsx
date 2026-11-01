@@ -1,57 +1,175 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
-import { CheckCircle2, Circle, Sparkles, ArrowRight, CheckCheck } from "lucide-react";
+import { getStore } from "@/lib/demo/store";
+import { CheckCircle2, Circle, Sparkles, ArrowRight } from "lucide-react";
 
-const CHECKLIST_STEPS = [
-  { id: 0, title: "Connect a repository to index code", href: "/repositories", desc: "Index files, AST symbols, and functions." },
-  { id: 1, title: "Explore repository source files", href: "/repositories/sample-project", desc: "Inspect file hierarchy and symbol definitions." },
-  { id: 2, title: "Ask AI your first code question", href: "/assistant", desc: "Query code with verifiable citation proofs." },
-  { id: 3, title: "Inspect architecture call graph", href: "/architecture", desc: "Visualize components and service boundaries." },
+interface ChecklistItem {
+  id: number;
+  key: string;
+  title: string;
+  desc: string;
+  href: string;
+}
+
+const CHECKLIST_STEPS: ChecklistItem[] = [
+  {
+    id: 0,
+    key: "connect_repo",
+    title: "Connect a repository to index code",
+    desc: "Index files, AST symbols, and parse cross-file call relationships.",
+    href: "/repositories",
+  },
+  {
+    id: 1,
+    key: "explore_files",
+    title: "Explore repository source files",
+    desc: "Inspect file hierarchy, symbols, and syntax trees.",
+    href: "/repositories/sample-project",
+  },
+  {
+    id: 2,
+    key: "ask_assistant",
+    title: "Ask AI your first code question",
+    desc: "Query code with verifiable citation proofs and line links.",
+    href: "/assistant",
+  },
+  {
+    id: 3,
+    key: "inspect_architecture",
+    title: "Inspect architecture call graph",
+    desc: "Visualize multi-tier dependency topology and entrypoint flows.",
+    href: "/architecture",
+  },
+  {
+    id: 4,
+    key: "review_pull_request",
+    title: "Review PR security & quality findings",
+    desc: "Audit pull requests, detect vulnerabilities, and assess test gaps.",
+    href: "/code-review?repoId=sample-project&pr=101",
+  },
 ];
 
 export function GettingStartedChecklist() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
   const { user } = useAuth();
-  const [completedSteps, setCompletedSteps] = useState<number[]>([0]);
 
   const storageKey = `codeatlas_checklist_${user?.id || "guest"}`;
 
-  // Load persisted progress from localStorage per user
+  // Reactive store state
+  const [storeData, setStoreData] = useState(() => {
+    try {
+      return getStore();
+    } catch {
+      return null;
+    }
+  });
+
+  const [manuallyToggled, setManuallyToggled] = useState<Record<number, boolean>>({});
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      try {
+        setStoreData(getStore());
+      } catch {}
+    };
+
+    if (typeof window !== "undefined") {
+      window.addEventListener("codeatlas:repositories-changed", handleUpdate);
+      window.addEventListener("codeatlas:workspace-changed", handleUpdate);
+      return () => {
+        window.removeEventListener("codeatlas:repositories-changed", handleUpdate);
+        window.removeEventListener("codeatlas:workspace-changed", handleUpdate);
+      };
+    }
+  }, []);
+
+  // Load manual overrides from localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          setCompletedSteps(parsed);
-          return;
-        }
+        setManuallyToggled(JSON.parse(saved));
       }
-      setCompletedSteps([0]);
-    } catch {
-      setCompletedSteps([0]);
-    }
+    } catch {}
   }, [storageKey]);
 
-  const toggleStep = (index: number) => {
-    setCompletedSteps((prev) => {
-      const next = prev.includes(index)
-        ? prev.filter((i) => i !== index)
-        : [...prev, index];
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+  // Compute auto-completion from real store state
+  const autoCompleted = useMemo(() => {
+    const state: Record<number, boolean> = {
+      0: false,
+      1: false,
+      2: false,
+      3: false,
+      4: false,
+    };
+
+    if (storeData) {
+      // Step 0: connected repos
+      if (storeData.repositories && storeData.repositories.length > 0) {
+        state[0] = true;
+      }
+      // Step 1: files explored or present in tree
+      if (storeData.repositoryFiles && Object.keys(storeData.repositoryFiles).length > 0) {
+        state[1] = true;
+      }
+      // Step 2: assistant asked or activities present
+      const hasAssistantActivity = storeData.activities?.some(
+        (a: any) =>
+          a.type === "question_answered" ||
+          a.type === "assistant" ||
+          a.title?.toLowerCase().includes("assistant") ||
+          a.title?.toLowerCase().includes("question")
+      );
+      if (hasAssistantActivity) {
+        state[2] = true;
+      }
+      // Step 3: architecture topology viewed
+      const hasArchActivity = storeData.activities?.some(
+        (a: any) =>
+          a.type === "architecture_explored" ||
+          a.title?.toLowerCase().includes("architecture") ||
+          a.title?.toLowerCase().includes("graph")
+      );
+      if (hasArchActivity) {
+        state[3] = true;
+      }
+      // Step 4: review completed or session present
+      if (storeData.reviewSessions && Object.keys(storeData.reviewSessions).length > 0) {
+        state[4] = true;
+      }
+    }
+
+    return state;
+  }, [storeData]);
+
+  // Effective completion status merges auto-detection with manual user toggle
+  const isStepCompleted = (id: number): boolean => {
+    if (typeof manuallyToggled[id] === "boolean") {
+      return manuallyToggled[id];
+    }
+    return Boolean(autoCompleted[id]);
   };
 
+  const toggleStep = (id: number) => {
+    const currentStatus = isStepCompleted(id);
+    const updated = {
+      ...manuallyToggled,
+      [id]: !currentStatus,
+    };
+    setManuallyToggled(updated);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(updated));
+    } catch {}
+  };
+
+  const completedCount = CHECKLIST_STEPS.filter((s) => isStepCompleted(s.id)).length;
   const totalSteps = CHECKLIST_STEPS.length;
-  const progressPercent = Math.round((completedSteps.length / totalSteps) * 100);
+  const progressPercent = Math.round((completedCount / totalSteps) * 100);
 
   return (
     <section
@@ -71,12 +189,12 @@ export function GettingStartedChecklist() {
                 Getting Started
               </h2>
               <p className="text-[11px] text-[var(--text-secondary)]">
-                {completedSteps.length} of {totalSteps} onboarding tasks completed.
+                {completedCount} of {totalSteps} onboarding tasks completed.
               </p>
             </div>
           </div>
 
-          <span className="text-xs font-mono font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2 py-0.5 rounded-md">
+          <span className="text-xs font-mono font-bold text-[var(--primary)] bg-[var(--primary)]/10 px-2.5 py-1 rounded-md border border-[var(--primary)]/20">
             {progressPercent}%
           </span>
         </div>
@@ -85,7 +203,7 @@ export function GettingStartedChecklist() {
         <div className="mt-4">
           <div className="h-2 w-full rounded-full bg-[var(--border-color)]/50 overflow-hidden">
             <div
-              className="h-full rounded-full bg-[var(--primary)] transition-all duration-500"
+              className="h-full rounded-full bg-[#7C5CFC] transition-all duration-500"
               style={{ width: `${progressPercent}%` }}
             />
           </div>
@@ -94,18 +212,18 @@ export function GettingStartedChecklist() {
         {/* Steps List */}
         <div className="mt-4 space-y-2">
           {CHECKLIST_STEPS.map((step) => {
-            const isCompleted = completedSteps.includes(step.id);
+            const isCompleted = isStepCompleted(step.id);
             return (
               <div
                 key={step.id}
                 className={`p-3 rounded-xl border transition-all duration-150 flex items-center justify-between gap-3 ${
                   isCompleted
                     ? isDark
-                      ? "bg-[#111726]/30 border-[#242B39]/50 opacity-80"
-                      : "bg-[#F9FAFB]/70 border-[#E8E5F4]/60 opacity-80"
+                      ? "bg-[#111726]/30 border-[#242B39]/50 opacity-85"
+                      : "bg-[#F9FAFB]/70 border-[#E8E5F4]/60 opacity-85"
                     : isDark
                     ? "bg-[#111726]/70 border-[#242B39] hover:border-[var(--primary)]/40"
-                    : "bg-white border-[#E8E5F4] hover:border-[var(--primary)]/40 shadow-xs"
+                    : "bg-white border-[#E8E5F4] hover:border-[var(--primary)]/40 shadow-2xs"
                 }`}
               >
                 <div className="flex items-start gap-2.5 min-w-0 flex-1">
@@ -140,6 +258,7 @@ export function GettingStartedChecklist() {
 
                 <Link
                   href={step.href}
+                  aria-label={`Start task: ${step.title}`}
                   className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-[var(--primary)] hover:bg-[var(--primary)]/10 transition-colors shrink-0 inline-flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
                 >
                   <span>Start</span>

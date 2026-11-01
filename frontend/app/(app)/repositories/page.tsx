@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import PageHeader from "@/components/PageHeader";
 import { useRepositories } from "@/hooks/useRepositories";
 import { RepositoryFilters } from "@/components/repositories/RepositoryFilters";
@@ -8,7 +8,7 @@ import { RepositoryList } from "@/components/repositories/RepositoryList";
 import { AddRepositoryDialog } from "@/components/repositories/AddRepositoryDialog";
 import { DisconnectRepositoryModal } from "@/components/repositories/DisconnectRepositoryModal";
 import { LoadingState } from "@/components/ui/LoadingState";
-import { Database, Sparkles } from "lucide-react";
+import { Database } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 
 export default function RepositoriesPage() {
@@ -27,6 +27,16 @@ export default function RepositoriesPage() {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [disconnectRepo, setDisconnectRepo] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const lang = params.get("language");
+      if (lang) {
+        setFilters((prev) => ({ ...prev, language: lang }));
+      }
+    }
+  }, [setFilters]);
 
   const handleSearchChange = (searchQuery: string) => {
     setFilters((prev) => ({ ...prev, searchQuery }));
