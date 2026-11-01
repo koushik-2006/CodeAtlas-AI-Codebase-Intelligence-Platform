@@ -205,7 +205,10 @@ export default function QualityFindingsList({
 
             <div className="space-y-1.5 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="font-bold text-sm text-[var(--text-primary)]">
+                <h4
+                  onClick={() => handleToggleCode(f.id)}
+                  className="font-bold text-sm text-[var(--text-primary)] cursor-pointer hover:text-[#7C5CFC]"
+                >
                   {f.title}
                 </h4>
                 {getSeverityBadge(f.severity)}

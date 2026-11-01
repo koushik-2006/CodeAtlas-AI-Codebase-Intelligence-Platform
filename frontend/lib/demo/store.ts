@@ -1222,6 +1222,29 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
 
   const refactoringProposals = [
     {
+      id: "prop_demo_dup_1",
+      repositoryId: "sample-project",
+      userId: "usr_demo",
+      title: "Extract duplicate validateEmail to @acme/shared-utils (shared-core-lib)",
+      operationType: "extract_function",
+      operation: "extract_function",
+      filePath: "src/utils/validation.ts",
+      targetFile: "src/utils/validation.ts",
+      symbolName: "validateEmail",
+      targetSymbol: "validateEmail",
+      lineRange: { start: 1, end: 10 },
+      rationale: "Identical email regex validator is duplicated across sample-project, payment-service, and shared-core-lib. Consolidating into shared-core-lib eliminates cross-repo drift.",
+      diff: "@@ -1,7 +1,3 @@\n-export function validateEmail(email: string): boolean {\n-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\n-}\n+export { validateEmail } from \"@acme/shared-utils\";",
+      status: "open",
+      impactAnalysis: {
+        riskLevel: "Low",
+        riskScore: 15,
+        affectedTests: ["tests/validation.test.ts"],
+        blastRadiusFiles: ["src/utils/validation.ts", "package.json"],
+      },
+      createdAt: "2026-01-26T14:30:00.000Z",
+    },
+    {
       id: "prop_demo_1",
       repositoryId: "sample-project",
       userId: "usr_demo",

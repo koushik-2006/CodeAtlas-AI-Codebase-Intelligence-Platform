@@ -139,62 +139,58 @@ async function runTest() {
     const scoreText = await page.locator(".text-2xl.font-black, .text-3xl.font-extrabold").first().textContent();
     assert(!!scoreText && parseInt(scoreText) >= 30, `Debt Health Score rendered: ${scoreText}`);
 
-    // Category breakdown bar chart rendered
-    const catBarHeader = page.locator("h3:has-text('Findings by Category')");
-    assert(await catBarHeader.isVisible(), "Findings by Category chart header rendered");
+    // Verify Charts
+    const categoryChart = page.locator("h3:has-text('Findings by Category')");
+    assert(await categoryChart.isVisible(), "Findings by Category chart header rendered");
 
-    // 8-scan trend line chart rendered
-    const trendHeader = page.locator("h3:has-text('Debt Trend')");
-    assert(await trendHeader.isVisible(), "Debt Trend (Last 8 Scans) chart header rendered");
+    const trendChart = page.locator("h3:has-text('Debt Trend')");
+    assert(await trendChart.isVisible(), "Debt Trend (Last 8 Scans) chart header rendered");
 
-    // Hotspots scatter plot rendered
-    const scatterHeader = page.locator("h3:has-text('Hotspots Scatter')");
-    assert(await scatterHeader.isVisible(), "Hotspots Scatter plot header rendered");
+    const hotspotsChart = page.locator("h3:has-text('Hotspots Scatter')");
+    assert(await hotspotsChart.isVisible(), "Hotspots Scatter plot header rendered");
 
-    // Top 5 files to fix first rendered
-    const topFilesHeader = page.locator("h3:has-text('Top 5 Files to Fix First')");
-    assert(await topFilesHeader.isVisible(), "Top 5 Files to Fix First rendered");
+    const top5Files = page.locator("h3:has-text('Top 5 Files to Fix First')");
+    assert(await top5Files.isVisible(), "Top 5 Files to Fix First rendered");
 
-    // 3. Tab 2: Findings List, Severity Filter, & Code Preview
+    // 3. Findings Filtering, Grouping & Code Previews
     console.log("\n--- STEP 3: FINDINGS FILTERING & CODE PREVIEWS ---");
     await page.click("button:has-text('Quality Findings')");
-    await page.waitForTimeout(500);
-
-    // Filter to High/Warning severity
-    const severitySelect = page.locator("select").filter({ hasText: "Severity:" }).first();
-    await severitySelect.selectOption("high");
     await page.waitForTimeout(400);
 
-    const firstFindingTitle = await page.locator("h4").first().textContent();
-    assert(!!firstFindingTitle, `High severity findings filtered: '${firstFindingTitle}'`);
+    // Select High severity filter
+    const severitySelect = page.locator("select").filter({ hasText: "Severity:" }).first();
+    await severitySelect.selectOption("high");
+    await page.waitForTimeout(300);
 
-    // Toggle code preview on the first finding
-    const toggleCodeBtn = page.locator("button[title='Toggle Code Snippet']").first();
-    if (await toggleCodeBtn.isVisible()) {
-      await toggleCodeBtn.click();
-      await page.waitForTimeout(300);
-      const codePreview = page.locator("pre").first();
-      assert(await codePreview.isVisible(), "Code preview with highlighted lines expanded");
-    }
+    const highFindingTitle = page.locator("h4").filter({ hasText: "unit test" }).first();
+    assert(await highFindingTitle.isVisible(), `High severity findings filtered: '${(await highFindingTitle.textContent())?.trim()}'`);
 
-    // 4. Propose Refactor & Diff Synthesis
+    // Click finding card to expand code preview with highlighted line
+    await highFindingTitle.click();
+    await page.waitForTimeout(400);
+
+    const codeSnippet = page.locator("pre").first();
+    assert(await codeSnippet.isVisible(), "Code preview with highlighted lines expanded");
+
+    // 4. Propose Refactoring & Diff Preview
     console.log("\n--- STEP 4: PROPOSE REFACTORING & DIFF PREVIEW ---");
-    const proposeBtn = page.locator("button:has-text('Propose Refactor')").first();
-    assert(await proposeBtn.isVisible(), "Propose Refactor button visible on finding card");
-    await proposeBtn.click();
+    const proposeRefactorBtn = page.locator("button:has-text('Propose Refactor')").first();
+    assert(await proposeRefactorBtn.isVisible(), "Propose Refactor button visible on finding card");
+
+    await proposeRefactorBtn.click();
     await page.waitForTimeout(500);
 
-    // Modal should be open
-    const modalTitle = page.locator("h3:has-text('Propose Safe Refactoring')");
-    assert(await modalTitle.isVisible(), "New Proposal Modal opened");
+    // Verify New Proposal Modal opened
+    const modalHeader = page.locator("h3:has-text('Propose Safe Refactoring')");
+    assert(await modalHeader.isVisible(), "New Proposal Modal opened");
 
-    // Submit proposal
-    const submitProposalBtn = page.locator("button:has-text('Generate Proposal')");
-    await submitProposalBtn.click();
-    
-    // Tab 3 Active Proposal should now be active
-    const diffView = page.locator("button:has-text('Unified Diff')");
-    await diffView.waitFor({ state: "visible", timeout: 8000 }).catch(() => null);
+    // Click Generate Proposal in modal
+    const generateProposalBtn = page.locator("button:has-text('Generate Proposal')");
+    await generateProposalBtn.click();
+    await page.waitForTimeout(2000);
+
+    // Proposal card diff preview should now be visible in Active Proposal tab
+    const diffView = page.locator("div.font-mono").filter({ hasText: "@@" }).first();
     assert(await diffView.isVisible(), "Proposal unified diff rendered in Active Proposal tab");
 
     // Toggle to Side-by-Side view
@@ -224,6 +220,18 @@ async function runTest() {
 
       const appliedBadge = page.locator("text=Applied ✓").first();
       assert(await appliedBadge.isVisible(), "Refactoring patch applied and status marked 'Applied'");
+
+      // Verify PR in /code-review
+      await page.goto(`${host}${basePath}/code-review/`);
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForTimeout(1000);
+      const prInList = page.locator("text=refactor").first();
+      assert(await prInList.isVisible(), "Refactoring PR appears in Code Review (/code-review)");
+
+      // Return to refactoring page
+      await page.goto(`${host}${basePath}/refactoring/`);
+      await page.waitForLoadState("domcontentloaded");
+      await page.waitForTimeout(800);
     }
 
     // 6. Ignore a finding with reason and restore it
@@ -348,4 +356,3 @@ runTest().catch((err) => {
   console.error("Test failed with error:", err);
   process.exit(1);
 });
-
