@@ -32,6 +32,7 @@
     "test:debug": "tsx scripts/test-debug-lifecycle.ts",
     "test:refactoring": "tsx scripts/test-refactoring-lifecycle.ts",
     "test:architecture": "tsx scripts/test-architecture-lifecycle.ts",
+    "test:impact": "tsx scripts/test-impact-lifecycle.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:nav-guard && npm run test:github-oauth && npm run test:repo-ingestion && npm run test:gemini && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase20 && npm run test:phase21",
     "test:all": "npm run lint && npm run typecheck && npm run build:vscode && npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:nav-guard && npm run test:github-oauth && npm run test:gemini && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase20 && npm run test:phase21 && npm run build"
   },

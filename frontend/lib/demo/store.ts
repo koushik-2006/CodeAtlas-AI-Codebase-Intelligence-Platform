@@ -9,6 +9,7 @@ import { SAMPLE_REPOSITORIES_DATA } from "@/lib/constants";
 import { SAMPLE_PROJECT_TREE, SAMPLE_PROJECT_CODE } from "@/lib/sample-repository-files";
 import { STANDARD_WORKFLOWS, STEP_DEFINITIONS, synthesizeDiff } from "@/lib/demo/agent-engine";
 import { AgentRun, AgentPolicy, WorkflowTemplate } from "@/types/agent";
+import { SavedImpactAnalysis } from "@/types/impact";
 
 export interface StoreUser {
   id: string;
@@ -79,6 +80,7 @@ export interface DemoStoreData {
   architectureLayerOverrides?: Record<string, Record<string, string>>;
   architectureLayerRules?: Record<string, any[]>;
   architectureAiOverviews?: Record<string, { summary: string; mermaid: string; timestamp: string }>;
+  impactAnalyses?: SavedImpactAnalysis[];
 }
 
 export interface CodeAnalysisHistoryItem {
@@ -446,9 +448,19 @@ export function createInitialData(): DemoStoreData {
         type: "folder",
         path: "src",
         children: [
+          { id: "file-shared-validation", name: "validation.ts", type: "file", path: "src/validation.ts", language: "typescript", size: "1.2 KB" },
           { id: "file-shared-valid", name: "validators.ts", type: "file", path: "src/validators.ts", language: "typescript", size: "1.1 KB" },
           { id: "file-shared-client", name: "http-client.ts", type: "file", path: "src/http-client.ts", language: "typescript", size: "1.6 KB" },
           { id: "file-shared-index", name: "index.ts", type: "file", path: "src/index.ts", language: "typescript", size: "420 B" },
+        ],
+      },
+      {
+        id: "folder-shared-tests",
+        name: "tests",
+        type: "folder",
+        path: "tests",
+        children: [
+          { id: "file-shared-test-val", name: "validation.test.ts", type: "file", path: "tests/validation.test.ts", language: "typescript", size: "850 B" },
         ],
       },
     ],
@@ -527,12 +539,24 @@ export function createInitialData(): DemoStoreData {
         language: "typescript",
         code: `export class HttpClient {\n  constructor(private baseUrl: string) {}\n  async get<T>(path: string): Promise<T> {\n    const res = await fetch(\`\${this.baseUrl}\${path}\`);\n    return res.json();\n  }\n  async post<T>(path: string, body: any): Promise<T> {\n    const res = await fetch(\`\${this.baseUrl}\${path}\`, {\n      method: "POST",\n      headers: { "Content-Type": "application/json" },\n      body: JSON.stringify(body),\n    });\n    return res.json();\n  }\n}\n`,
       },
+      "src/validation.ts": {
+        language: "typescript",
+        code: `export function validateEmail(email: string): boolean {\n  if (!email || typeof email !== "string") return false;\n  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email.trim());\n}\n\nexport function validatePassword(password: string): boolean {\n  return typeof password === "string" && password.length >= 8;\n}\n\nexport function sanitizeInput(input: string): string {\n  return input.replace(/[<>]/g, "").trim();\n}\n`,
+      },
+      "tests/validation.test.ts": {
+        language: "typescript",
+        code: `import { validateEmail, validatePassword } from "../src/validation";\n\ndescribe("validateEmail Suite", () => {\n  it("validates enterprise email formats correctly", () => {\n    expect(validateEmail("developer@acme.corp")).toBe(true);\n    expect(validateEmail("invalid-email")).toBe(false);\n  });\n});\n`,
+      },
       "src/index.ts": {
         language: "typescript",
         code: `export * from "./validators";\nexport * from "./http-client";\n`,
       },
     },
     "payment-service": {
+      "src/checkout-route.ts": {
+        language: "typescript",
+        code: `import { validateEmail } from "@acme/shared-utils";\n\nexport async function handleCheckoutRoute(req: any) {\n  const { customerEmail, amountCents } = req.body || {};\n  if (!validateEmail(customerEmail)) {\n    return { status: 400, error: "Invalid customer email provided" };\n  }\n  return { status: 200, success: true, reference: "pay_tx_7719" };\n}\n`,
+      },
       "PaymentProcessor.java": {
         language: "java",
         code: `package com.acme.payment;
@@ -1616,6 +1640,126 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     architectureLayerOverrides: {},
     architectureLayerRules: {},
     architectureAiOverviews: {},
+    impactAnalyses: [
+      {
+        id: "impact_seed_1",
+        title: "shared-core-lib: validateEmail() Evolution",
+        repositoryId: "shared-core-lib",
+        repositoryName: "shared-core-lib",
+        targetFile: "src/validation.ts",
+        targetSymbol: "validateEmail",
+        changeType: "change_signature",
+        depth: 3,
+        includeCrossRepo: true,
+        riskScore: 84,
+        riskLevel: "Critical",
+        summaryCounts: {
+          filesCount: 6,
+          symbolsCount: 7,
+          endpointsCount: 2,
+          reposCount: 2,
+          testsCount: 2,
+          gapsCount: 1,
+          directCount: 3,
+          indirectCount: 4,
+        },
+        createdAt: new Date(Date.now() - 3600000 * 3).toISOString(),
+        result: {
+          symbol: "validateEmail()",
+          file: "src/validation.ts",
+          repositoryId: "shared-core-lib",
+          repositoryName: "shared-core-lib",
+          changeType: "change_signature",
+          maxDepth: 3,
+          includeCrossRepo: true,
+          riskLevel: "Critical",
+          riskScore: 84,
+          affectedEndpoints: [
+            { method: "POST", path: "/api/v1/auth/session", file: "src/api/auth-routes.ts", line: 15, handlerName: "handleLoginRoute", repositoryId: "sample-project", repositoryName: "demo-auth-service" },
+            { method: "POST", path: "/api/v1/checkout", file: "src/checkout.ts", line: 19, handlerName: "handleCheckoutRoute", repositoryId: "payment-service", repositoryName: "payment-service" },
+          ],
+          affectedComponents: [
+            { name: "LoginForm.tsx", file: "src/components/LoginForm.tsx", callerLine: 24, repositoryId: "sample-project" },
+            { name: "UserProfile.tsx", file: "src/components/UserProfile.tsx", callerLine: 12, repositoryId: "sample-project" },
+          ],
+          affectedServices: [
+            { name: "auth.ts", file: "src/services/auth.ts", line: 28, repositoryId: "sample-project" },
+          ],
+          testsToRerun: [
+            { name: "tests/validation.test.ts", file: "tests/validation.test.ts", line: 5, repositoryId: "shared-core-lib", command: "npm test -- tests/validation.test.ts", status: "needs-update" },
+            { name: "tests/auth.test.ts", file: "tests/auth.test.ts", line: 18, repositoryId: "sample-project", command: "npm test -- tests/auth.test.ts", status: "needs-update" },
+          ],
+          coverageGaps: [
+            { id: "gap_1", name: "UserProfile.tsx", file: "src/components/UserProfile.tsx", repositoryId: "sample-project", repositoryName: "demo-auth-service", line: 12, reason: "UserProfile renders validation checks but has no unit test suite." },
+          ],
+          directlyDependent: [
+            { id: "dep_1", name: "auth.ts", type: "service", file: "src/services/auth.ts", line: 28, reason: "Direct caller in loginUser credential check", severity: "High", relationship: "Direct Caller" },
+            { id: "dep_2", name: "tests/validation.test.ts", type: "test", file: "tests/validation.test.ts", line: 5, reason: "Unit tests covering validateEmail()", severity: "High", relationship: "Test Suite" },
+          ],
+          downstreamAffected: [
+            { id: "down_1", name: "LoginForm.tsx", type: "component", file: "src/components/LoginForm.tsx", line: 24, reason: "UI form submission callback", severity: "Medium", relationship: "Hop 2 Caller" },
+            { id: "down_2", name: "auth-routes.ts", type: "endpoint", file: "src/api/auth-routes.ts", line: 15, reason: "Public API session creation", severity: "High", relationship: "Hop 2 Endpoint" },
+          ],
+          reviewRequired: [],
+          recommendation: "Modifying 'src/validation.ts' (change signature) carries a Critical risk score of 84/100. It reaches 6 files across 2 repos, impacting 2 public endpoints and requiring 2 test suites to be updated.",
+        },
+      },
+      {
+        id: "impact_seed_2",
+        title: "sample-project: loginUser() Refactoring",
+        repositoryId: "sample-project",
+        repositoryName: "demo-auth-service",
+        targetFile: "src/services/auth.ts",
+        targetSymbol: "loginUser",
+        changeType: "modify_behavior",
+        depth: 3,
+        includeCrossRepo: false,
+        riskScore: 68,
+        riskLevel: "High",
+        summaryCounts: {
+          filesCount: 4,
+          symbolsCount: 5,
+          endpointsCount: 1,
+          reposCount: 1,
+          testsCount: 1,
+          gapsCount: 1,
+          directCount: 3,
+          indirectCount: 1,
+        },
+        createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+        result: {
+          symbol: "loginUser()",
+          file: "src/services/auth.ts",
+          repositoryId: "sample-project",
+          repositoryName: "demo-auth-service",
+          changeType: "modify_behavior",
+          maxDepth: 3,
+          includeCrossRepo: false,
+          riskLevel: "High",
+          riskScore: 68,
+          affectedEndpoints: [
+            { method: "POST", path: "/api/v1/auth/session", file: "src/api/auth-routes.ts", line: 18, handlerName: "handleLoginRoute", repositoryId: "sample-project", repositoryName: "demo-auth-service" },
+          ],
+          affectedComponents: [
+            { name: "LoginForm.tsx", file: "src/components/LoginForm.tsx", callerLine: 28, repositoryId: "sample-project" },
+            { name: "UserProfile.tsx", file: "src/components/UserProfile.tsx", callerLine: 14, repositoryId: "sample-project" },
+          ],
+          affectedServices: [],
+          testsToRerun: [
+            { name: "tests/auth.test.ts", file: "tests/auth.test.ts", line: 18, repositoryId: "sample-project", command: "npm test -- tests/auth.test.ts", status: "needs-update" },
+          ],
+          coverageGaps: [
+            { id: "gap_2", name: "UserProfile.tsx", file: "src/components/UserProfile.tsx", repositoryId: "sample-project", repositoryName: "demo-auth-service", line: 14, reason: "Lacks direct automated tests." },
+          ],
+          directlyDependent: [
+            { id: "dep_a1", name: "LoginForm.tsx", type: "component", file: "src/components/LoginForm.tsx", line: 28, reason: "Calls loginUser in form submit handler", severity: "High", relationship: "Direct Caller" },
+          ],
+          downstreamAffected: [],
+          reviewRequired: [],
+          recommendation: "Modifying loginUser() carries High risk (68/100). Directly affects LoginForm.tsx and POST /api/v1/auth/session.",
+        },
+      },
+    ],
     explorerHistory: [
       {
         id: "hist_sample_1",
@@ -3229,3 +3373,52 @@ export function getArchitectureAiOverview(
   const store = getStore();
   return store.architectureAiOverviews?.[repoId] || null;
 }
+
+// ---------------------------------------------------------------------------
+// Change Impact Analysis Persistence & State Helpers
+// ---------------------------------------------------------------------------
+
+export function saveImpactAnalysis(analysis: SavedImpactAnalysis): void {
+  const store = getStore();
+  if (!store.impactAnalyses) store.impactAnalyses = [];
+  
+  const existingIdx = store.impactAnalyses.findIndex((a) => a.id === analysis.id);
+  if (existingIdx >= 0) {
+    store.impactAnalyses[existingIdx] = analysis;
+  } else {
+    store.impactAnalyses = [analysis, ...store.impactAnalyses];
+  }
+
+  logActivity({
+    type: "impact_analyzed",
+    title: `Analyzed Change Impact: ${analysis.targetSymbol || analysis.targetFile}`,
+    description: `Computed blast radius: ${analysis.riskLevel} risk (${analysis.riskScore}/100) affecting ${analysis.summaryCounts.filesCount} file(s) across ${analysis.summaryCounts.reposCount} repo(s).`,
+    href: `/change-impact?repo=${analysis.repositoryId}&file=${encodeURIComponent(analysis.targetFile)}${analysis.targetSymbol ? `&symbol=${encodeURIComponent(analysis.targetSymbol)}` : ""}`,
+    status: analysis.riskLevel === "Critical" || analysis.riskLevel === "High" ? "warning" : "success",
+  });
+
+  saveStore(store);
+}
+
+export function getImpactAnalyses(): SavedImpactAnalysis[] {
+  const store = getStore();
+  return store.impactAnalyses || [];
+}
+
+export function deleteImpactAnalysis(id: string): void {
+  const store = getStore();
+  if (!store.impactAnalyses) return;
+  store.impactAnalyses = store.impactAnalyses.filter((a) => a.id !== id);
+  saveStore(store);
+}
+
+export function renameImpactAnalysis(id: string, newTitle: string): void {
+  const store = getStore();
+  if (!store.impactAnalyses) return;
+  const item = store.impactAnalyses.find((a) => a.id === id);
+  if (item) {
+    item.title = newTitle;
+    saveStore(store);
+  }
+}
+
