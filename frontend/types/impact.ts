@@ -190,7 +190,7 @@ export interface ChangeImpactResult {
 export interface ImpactAnalysisRequest {
   repositoryId: string;
   file: string;
-  symbol: string;
+  symbol?: string;
   changeType?: ChangeType;
   depth?: number;
   includeCrossRepo?: boolean;

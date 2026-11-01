@@ -753,6 +753,8 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     {
       id: "pr_101",
       number: 101,
+      repositoryId: "sample-project",
+      source: "Demo",
       title: "feat(auth): Add WebAuthn and passkey credential support",
       body: "Introduces public-key authentication endpoints and cryptographic assertion verification.\n\n- Updates `loginUser` to support public-key challenge verification.\n- Adds WebAuthn ceremony helper.",
       author: {
@@ -764,11 +766,98 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
       baseSha: "30e6d94e",
       headSha: "a8f7b2c1",
       state: "open",
+      reviewStatus: "pending",
+      riskLevel: "High",
+      riskScore: 78,
+      labels: ["security", "auth", "fido2"],
       createdAt: "2026-01-20T10:15:00.000Z",
       updatedAt: "2026-01-21T14:22:00.000Z",
       additions: 142,
       deletions: 18,
       changedFilesCount: 3,
+      checklist: [
+        { id: "chk_tests", label: "Tests added and passing", checked: true },
+        { id: "chk_docs", label: "Documentation updated", checked: false },
+        { id: "chk_secrets", label: "No secrets or API keys exposed", checked: true },
+        { id: "chk_impact", label: "Impact analysis checked", checked: false },
+      ],
+      timeline: [
+        {
+          id: "tl_1",
+          type: "opened",
+          title: "Elena Rostova opened pull request #101",
+          actor: {
+            name: "Elena Rostova",
+            avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop",
+          },
+          timestamp: "2026-01-20T10:15:00.000Z",
+          description: "Branch feat/webauthn-passkeys into main.",
+        },
+        {
+          id: "tl_2",
+          type: "reviewed",
+          title: "CodeAtlas AI Review completed",
+          actor: {
+            name: "CodeAtlas AI",
+            avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+          },
+          timestamp: "2026-01-20T10:16:30.000Z",
+          description: "Flagged 1 critical security finding (WebAuthn challenge replay).",
+        },
+      ],
+      inlineComments: [
+        {
+          id: "inline_1",
+          file: "src/services/auth.ts",
+          line: 24,
+          author: {
+            name: "Marcus Chen",
+            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+          },
+          text: "Are we guaranteeing challenge expiration in Redis before verification?",
+          timestamp: "2026-01-20T11:00:00.000Z",
+          resolved: false,
+          replies: [
+            {
+              id: "reply_1",
+              author: {
+                name: "Elena Rostova",
+                avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop",
+              },
+              text: "Good catch, I will add an atomic consume check in the Redis nonce cache.",
+              timestamp: "2026-01-20T11:20:00.000Z",
+            },
+          ],
+        },
+      ],
+      discussions: {
+        "finding-sec-1": {
+          id: "disc_sec_1",
+          findingId: "finding-sec-1",
+          resolved: false,
+          comments: [
+            {
+              id: "disc_c1",
+              author: {
+                name: "Alex Chen",
+                avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+              },
+              text: "We should definitely consume the challenge nonce before calling verifyWebAuthnAssertion.",
+              timestamp: "2026-01-20T12:00:00.000Z",
+              reactions: { "👍": 3 },
+            },
+          ],
+        },
+      },
+      viewedFiles: {
+        "src/services/auth.ts": true,
+      },
+      aiSummary: {
+        what: "Introduces WebAuthn passkey assertion support to user sign-in flows and cryptographic challenge validation.",
+        why: "Supports modern FIDO2 passwordless authentication standards and decreases credential theft risk.",
+        risk: "High architectural impact on authentication contracts. 1 critical vulnerability detected: assertion challenge replay without Redis nonce consumption.",
+        recommendedAction: "Block merge until WebAuthn nonce consumption is implemented and negative challenge unit tests are added.",
+      },
       files: [
         {
           filename: "src/services/auth.ts",
@@ -799,6 +888,8 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     {
       id: "pr_102",
       number: 102,
+      repositoryId: "sample-project",
+      source: "Demo",
       title: "fix(cache): Resolve race condition in distributed token cache",
       body: "Applies distributed lock mutex around refresh token rotation to prevent duplicate revocation events.",
       author: {
@@ -810,12 +901,141 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
       baseSha: "30e6d94e",
       headSha: "b4c9e8d2",
       state: "open",
+      reviewStatus: "approved",
+      riskLevel: "Medium",
+      riskScore: 42,
+      labels: ["cache", "bugfix"],
       createdAt: "2026-01-22T08:30:00.000Z",
       updatedAt: "2026-01-22T09:45:00.000Z",
       additions: 45,
       deletions: 9,
       changedFilesCount: 2,
-      files: [],
+      files: [
+        {
+          filename: "src/services/auth.ts",
+          status: "modified",
+          additions: 35,
+          deletions: 7,
+          changes: 42,
+          patch: "@@ -80,5 +80,12 @@ export async function rotateRefreshToken(oldToken: string) {\n+  const lock = await acquireDistributedLock(`lock:${oldToken}`);\n+  try {\n+    return await executeTokenRotation(oldToken);\n+  } finally {\n+    await lock.release();\n+  }",
+        },
+        {
+          filename: "tests/cache.test.ts",
+          status: "modified",
+          additions: 10,
+          deletions: 2,
+          changes: 12,
+          patch: "@@ -1,4 +1,8 @@\n+test('concurrentTokenRotationAcquiresLock', async () => {\n+  expect(true).toBe(true);\n+});",
+        },
+      ],
+    },
+    {
+      id: "pr_agent_1",
+      number: 103,
+      repositoryId: "sample-project",
+      source: "Agent",
+      title: "[Agent] Automated Security & Dependency Hardening",
+      body: "Automated patch generated by CodeAtlas AI Agent applying security best practices to authentication middleware.",
+      author: {
+        name: "CodeAtlas Agent",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+      },
+      baseBranch: "main",
+      headBranch: "agent/security-hardening",
+      baseSha: "30e6d94e",
+      headSha: "c8e1d4b9",
+      state: "open",
+      reviewStatus: "pending",
+      riskLevel: "Low",
+      riskScore: 18,
+      labels: ["agent", "automated", "security"],
+      createdAt: "2026-01-23T11:00:00.000Z",
+      updatedAt: "2026-01-23T11:05:00.000Z",
+      additions: 16,
+      deletions: 4,
+      changedFilesCount: 1,
+      files: [
+        {
+          filename: "src/services/auth.ts",
+          status: "modified",
+          additions: 16,
+          deletions: 4,
+          changes: 20,
+          patch: "@@ -1,4 +1,8 @@\n+// Hardened by CodeAtlas Agent\n+export const AUTH_HEADER_MAX_LENGTH = 4096;\n+if (header.length > AUTH_HEADER_MAX_LENGTH) throw new Error('Header too large');",
+        },
+      ],
+    },
+    {
+      id: "pr_debug_1",
+      number: 104,
+      repositoryId: "sample-project",
+      source: "Debugger",
+      title: "fix(debug): Handle NullReference in TokenDecoder",
+      body: "Automated bug fix generated by CodeAtlas AI Debugger resolving runtime NullReferenceException in TokenDecoder.",
+      author: {
+        name: "AI Debugger",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+      },
+      baseBranch: "main",
+      headBranch: "fix/debug-token-decoder",
+      baseSha: "30e6d94e",
+      headSha: "d9e2a3f4",
+      state: "open",
+      reviewStatus: "pending",
+      riskLevel: "Low",
+      riskScore: 22,
+      labels: ["debugger", "bugfix"],
+      createdAt: "2026-01-23T14:10:00.000Z",
+      updatedAt: "2026-01-23T14:15:00.000Z",
+      additions: 8,
+      deletions: 2,
+      changedFilesCount: 1,
+      files: [
+        {
+          filename: "src/services/auth.ts",
+          status: "modified",
+          additions: 8,
+          deletions: 2,
+          changes: 10,
+          patch: "@@ -55,3 +55,7 @@\n-  const raw = token.split('.')[1];\n+  if (!token || typeof token !== 'string') return null;\n+  const parts = token.split('.');\n+  if (parts.length < 2) return null;\n+  const raw = parts[1];",
+        },
+      ],
+    },
+    {
+      id: "pr_refactor_1",
+      number: 105,
+      repositoryId: "sample-project",
+      source: "Refactoring",
+      title: "[Refactor] Extract duplicate validateEmail to shared-core-lib",
+      body: "Safe refactoring proposal consolidating duplicate email validation logic across sample-project and payment-service into @acme/shared-utils.",
+      author: {
+        name: "Alex Chen",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+      },
+      baseBranch: "main",
+      headBranch: "refactor/extract-validate-email",
+      baseSha: "30e6d94e",
+      headSha: "e1f2a3b4",
+      state: "open",
+      reviewStatus: "pending",
+      riskLevel: "Medium",
+      riskScore: 48,
+      labels: ["refactor", "debt-reduction"],
+      createdAt: "2026-01-23T16:00:00.000Z",
+      updatedAt: "2026-01-23T16:05:00.000Z",
+      additions: 12,
+      deletions: 28,
+      changedFilesCount: 2,
+      files: [
+        {
+          filename: "src/utils/validation.ts",
+          status: "modified",
+          additions: 2,
+          deletions: 18,
+          changes: 20,
+          patch: "@@ -1,18 +1,2 @@\n-export function validateEmail(email: string): boolean {\n-  return /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email);\n-}\n+export { validateEmail } from 'shared-core-lib';",
+        },
+      ],
     },
   ];
 
@@ -843,6 +1063,7 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
           whyItMatters: "An adversary capturing a signed assertion could replay it to authenticate as the target user without holding the private security key.",
           suggestedRemediation: "Verify the nonce against the Redis nonce cache and atomically mark it as used using `nonceCache.consume(assertion.challenge)`.",
           isVerifiedFromSource: true,
+          isLocalCheck: true,
           status: "open",
           publishedToGitHub: false,
         },
@@ -859,6 +1080,7 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
           whyItMatters: "Edge cases like undefined, empty string, or non-base64 characters may cause unhandled exceptions at runtime.",
           suggestedRemediation: "Add test cases for empty string, 31-character strings, and null inputs in `tests/auth.test.ts`.",
           isVerifiedFromSource: true,
+          isLocalCheck: true,
           status: "open",
           publishedToGitHub: false,
         },
@@ -3421,4 +3643,529 @@ export function renameImpactAnalysis(id: string, newTitle: string): void {
     saveStore(store);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Pull Request & Code Review Persistence & State Helpers
+// ---------------------------------------------------------------------------
+
+export function getPullRequests(
+  repoId?: string,
+  sourceFilter?: string,
+  tabFilter?: string
+): any[] {
+  const store = getStore();
+  if (!store.pullRequests) store.pullRequests = [];
+
+  let list = [...store.pullRequests];
+
+  if (repoId && repoId !== "all" && repoId !== "workspace_all") {
+    list = list.filter((p) => (p.repositoryId || "sample-project") === repoId);
+  }
+
+  if (sourceFilter && sourceFilter !== "all") {
+    list = list.filter((p) => {
+      const src = p.source || "Demo";
+      return src.toLowerCase() === sourceFilter.toLowerCase();
+    });
+  }
+
+  if (tabFilter && tabFilter !== "all") {
+    switch (tabFilter) {
+      case "open":
+        list = list.filter((p) => p.state === "open");
+        break;
+      case "needs_review":
+        list = list.filter((p) => p.state === "open" && (!p.reviewStatus || p.reviewStatus === "pending"));
+        break;
+      case "approved":
+        list = list.filter((p) => p.reviewStatus === "approved");
+        break;
+      case "merged":
+        list = list.filter((p) => p.state === "merged");
+        break;
+      case "closed":
+        list = list.filter((p) => p.state === "closed");
+        break;
+    }
+  }
+
+  return list;
+}
+
+export function getPullRequestById(idOrNumber: string | number): any | null {
+  const store = getStore();
+  if (!store.pullRequests) return null;
+  const strId = String(idOrNumber);
+  return (
+    store.pullRequests.find(
+      (p) => p.id === strId || String(p.number) === strId || p.id === `pr_${strId}`
+    ) || null
+  );
+}
+
+export function createPullRequest(data: any): any {
+  const store = getStore();
+  if (!store.pullRequests) store.pullRequests = [];
+
+  const prNumber = store.pullRequests.length > 0 ? Math.max(...store.pullRequests.map((p: any) => p.number || 100)) + 1 : 101;
+  const prId = data.id || `pr_${prNumber}`;
+
+  const newPr = {
+    id: prId,
+    number: prNumber,
+    repositoryId: data.repositoryId || "sample-project",
+    source: data.source || "Demo",
+    title: data.title || `Update ${data.files?.[0]?.filename || "codebase"}`,
+    body: data.body || "Pull request submitted for code review via CodeAtlas.",
+    author: data.author || {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    baseBranch: data.baseBranch || "main",
+    headBranch: data.headBranch || `patch-${Date.now().toString(36)}`,
+    baseSha: data.baseSha || "30e6d94e",
+    headSha: data.headSha || "a8f7b2c1",
+    state: "open",
+    reviewStatus: "pending",
+    riskLevel: data.riskLevel || "Low",
+    riskScore: data.riskScore || 20,
+    labels: data.labels || ["review-needed"],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    additions: data.additions || 10,
+    deletions: data.deletions || 2,
+    changedFilesCount: data.files?.length || 1,
+    files: data.files || [],
+    checklist: [
+      { id: "chk_tests", label: "Tests added and passing", checked: false },
+      { id: "chk_docs", label: "Documentation updated", checked: false },
+      { id: "chk_secrets", label: "No secrets or API keys exposed", checked: true },
+      { id: "chk_impact", label: "Impact analysis checked", checked: false },
+    ],
+    timeline: [
+      {
+        id: `tl_${Date.now()}`,
+        type: "opened",
+        title: `Opened pull request #${prNumber}`,
+        actor: data.author || { name: "Alex Chen", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop" },
+        timestamp: new Date().toISOString(),
+        description: `Created PR from ${data.headBranch || "patch"} into ${data.baseBranch || "main"}.`,
+      },
+    ],
+    inlineComments: [],
+    discussions: {},
+    viewedFiles: {},
+  };
+
+  store.pullRequests.unshift(newPr);
+
+  logActivity({
+    type: "pr_opened",
+    title: `Opened Pull Request #${prNumber}`,
+    description: `Submitted "${newPr.title}" for review in ${newPr.repositoryId}.`,
+    href: `/code-review?pr=${newPr.id}`,
+    status: "info",
+  });
+
+  saveStore(store);
+  return newPr;
+}
+
+export function updatePullRequest(prId: string, updates: any): any | null {
+  const store = getStore();
+  if (!store.pullRequests) return null;
+  const idx = store.pullRequests.findIndex((p: any) => p.id === prId || String(p.number) === prId);
+  if (idx === -1) return null;
+
+  store.pullRequests[idx] = {
+    ...store.pullRequests[idx],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+
+  saveStore(store);
+  return store.pullRequests[idx];
+}
+
+export function mergePullRequest(prId: string): { success: boolean; message: string } {
+  const store = getStore();
+  if (!store.pullRequests) return { success: false, message: "No pull requests found" };
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return { success: false, message: "Pull request not found" };
+
+  // Apply patches to store.repositoryFiles
+  const targetRepo = pr.repositoryId || "sample-project";
+  if (!store.repositoryFiles) store.repositoryFiles = {};
+  if (!store.repositoryFiles[targetRepo]) store.repositoryFiles[targetRepo] = {};
+
+  if (Array.isArray(pr.files)) {
+    for (const f of pr.files) {
+      if (f.rawContent) {
+        store.repositoryFiles[targetRepo][f.filename] = {
+          code: f.rawContent,
+          language: f.filename.endsWith(".ts") || f.filename.endsWith(".tsx") ? "typescript" : "javascript",
+        };
+      } else if (f.patch && store.repositoryFiles[targetRepo][f.filename]) {
+        // Appended modification note
+        const existingCode = store.repositoryFiles[targetRepo][f.filename].code || "";
+        store.repositoryFiles[targetRepo][f.filename].code = `${existingCode}\n// Merged from PR #${pr.number}: ${pr.title}`;
+      }
+    }
+  }
+
+  pr.state = "merged";
+  pr.reviewStatus = "approved";
+  pr.updatedAt = new Date().toISOString();
+
+  if (!pr.timeline) pr.timeline = [];
+  pr.timeline.push({
+    id: `tl_merge_${Date.now()}`,
+    type: "merged",
+    title: `Merged Pull Request #${pr.number}`,
+    actor: {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    timestamp: new Date().toISOString(),
+    description: `Applied diff into ${pr.baseBranch || "main"} branch and updated repository file tree.`,
+  });
+
+  logActivity({
+    type: "pr_merged",
+    title: `Merged PR #${pr.number}: ${pr.title}`,
+    description: `Successfully applied changes to ${pr.repositoryId} on branch ${pr.baseBranch || "main"}.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: "success",
+  });
+
+  if (!store.notifications) store.notifications = [];
+  store.notifications.unshift({
+    id: `notif_pr_${pr.number}_${Date.now()}`,
+    title: `PR #${pr.number} Merged`,
+    message: `Pull Request #${pr.number} was merged into main.`,
+    timestamp: new Date().toISOString(),
+    read: false,
+    link: `/code-review?pr=${pr.id}`,
+  });
+
+  saveStore(store);
+  return { success: true, message: `PR #${pr.number} successfully merged into ${pr.baseBranch || "main"}.` };
+}
+
+export function closePullRequest(prId: string): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return false;
+
+  pr.state = "closed";
+  pr.updatedAt = new Date().toISOString();
+  if (!pr.timeline) pr.timeline = [];
+  pr.timeline.push({
+    id: `tl_close_${Date.now()}`,
+    type: "closed",
+    title: `Closed Pull Request #${pr.number}`,
+    actor: {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  logActivity({
+    type: "pr_closed",
+    title: `Closed PR #${pr.number}`,
+    description: `Closed pull request without merging.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: "info",
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function reopenPullRequest(prId: string): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return false;
+
+  pr.state = "open";
+  pr.updatedAt = new Date().toISOString();
+  if (!pr.timeline) pr.timeline = [];
+  pr.timeline.push({
+    id: `tl_reopen_${Date.now()}`,
+    type: "reopened",
+    title: `Reopened Pull Request #${pr.number}`,
+    actor: {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    timestamp: new Date().toISOString(),
+  });
+
+  logActivity({
+    type: "pr_reopened",
+    title: `Reopened PR #${pr.number}`,
+    description: `Reopened pull request for further review.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: "info",
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function addInlineComment(
+  prId: string,
+  comment: { file: string; line: number; text: string; author?: any }
+): any {
+  const store = getStore();
+  if (!store.pullRequests) return null;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return null;
+
+  if (!pr.inlineComments) pr.inlineComments = [];
+  const newComment = {
+    id: `inline_${Date.now()}`,
+    file: comment.file,
+    line: comment.line,
+    author: comment.author || {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    text: comment.text,
+    timestamp: new Date().toISOString(),
+    resolved: false,
+    replies: [],
+  };
+
+  pr.inlineComments.push(newComment);
+
+  if (!pr.timeline) pr.timeline = [];
+  pr.timeline.push({
+    id: `tl_comment_${Date.now()}`,
+    type: "commented",
+    title: `Inline comment added on ${comment.file}:${comment.line}`,
+    actor: newComment.author,
+    timestamp: new Date().toISOString(),
+    description: comment.text.slice(0, 80),
+  });
+
+  logActivity({
+    type: "review_comment_added",
+    title: `Commented on PR #${pr.number}`,
+    description: `Left inline comment on ${comment.file}:${comment.line}.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: "info",
+  });
+
+  saveStore(store);
+  return newComment;
+}
+
+export function replyToInlineComment(
+  prId: string,
+  commentId: string,
+  reply: { text: string; author?: any }
+): any {
+  const store = getStore();
+  if (!store.pullRequests) return null;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr || !pr.inlineComments) return null;
+
+  const target = pr.inlineComments.find((c: any) => c.id === commentId);
+  if (!target) return null;
+
+  if (!target.replies) target.replies = [];
+  const newReply = {
+    id: `reply_${Date.now()}`,
+    author: reply.author || {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    text: reply.text,
+    timestamp: new Date().toISOString(),
+  };
+
+  target.replies.push(newReply);
+  saveStore(store);
+  return newReply;
+}
+
+export function addDiscussionComment(
+  prId: string,
+  findingId: string,
+  comment: { text: string; author?: any }
+): any {
+  const store = getStore();
+  if (!store.pullRequests) return null;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return null;
+
+  if (!pr.discussions) pr.discussions = {};
+  if (!pr.discussions[findingId]) {
+    pr.discussions[findingId] = {
+      id: `disc_${findingId}`,
+      findingId,
+      comments: [],
+      resolved: false,
+    };
+  }
+
+  const newComment = {
+    id: `disc_comment_${Date.now()}`,
+    author: comment.author || {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    text: comment.text,
+    timestamp: new Date().toISOString(),
+    reactions: {},
+  };
+
+  pr.discussions[findingId].comments.push(newComment);
+
+  logActivity({
+    type: "review_discussion_added",
+    title: `Commented in Finding Discussion on PR #${pr.number}`,
+    description: comment.text.slice(0, 100),
+    href: `/code-review?pr=${pr.id}`,
+    status: "info",
+  });
+
+  saveStore(store);
+  return newComment;
+}
+
+export function resolveDiscussion(prId: string, findingId: string, resolved = true): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr || !pr.discussions || !pr.discussions[findingId]) return false;
+
+  pr.discussions[findingId].resolved = resolved;
+  saveStore(store);
+  return true;
+}
+
+export function toggleChecklistItem(prId: string, checklistId: string): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return false;
+
+  if (!pr.checklist) {
+    pr.checklist = [
+      { id: "chk_tests", label: "Tests added and passing", checked: true },
+      { id: "chk_docs", label: "Documentation updated", checked: false },
+      { id: "chk_secrets", label: "No secrets or API keys exposed", checked: true },
+      { id: "chk_impact", label: "Impact analysis checked", checked: false },
+    ];
+  }
+
+  const item = pr.checklist.find((c: any) => c.id === checklistId);
+  if (!item) return false;
+
+  item.checked = !item.checked;
+  saveStore(store);
+  return true;
+}
+
+export function toggleViewedFile(prId: string, filename: string): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return false;
+
+  if (!pr.viewedFiles) pr.viewedFiles = {};
+  pr.viewedFiles[filename] = !pr.viewedFiles[filename];
+  saveStore(store);
+  return true;
+}
+
+export function applyFindingSuggestion(
+  prId: string,
+  findingId: string,
+  suggestionDiff?: string
+): { success: boolean; message: string } {
+  const store = getStore();
+  if (!store.pullRequests) return { success: false, message: "No PR found" };
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return { success: false, message: "PR not found" };
+
+  // Update finding status in review session if stored
+  const sessionKey = `${pr.repositoryId || "sample-project"}_${pr.number}`;
+  if (store.reviewSessions?.[sessionKey]) {
+    const f = store.reviewSessions[sessionKey].findings?.find((x: any) => x.id === findingId);
+    if (f) {
+      f.status = "accepted";
+      f.accepted = true;
+    }
+  }
+
+  // Update PR patch if suggestionDiff is present
+  if (suggestionDiff && pr.files?.[0]) {
+    pr.files[0].patch = `${pr.files[0].patch || ""}\n\n# Applied Remediation:\n${suggestionDiff}`;
+    pr.additions = (pr.additions || 0) + 2;
+  }
+
+  if (!pr.timeline) pr.timeline = [];
+  pr.timeline.push({
+    id: `tl_suggest_${Date.now()}`,
+    type: "reviewed",
+    title: `Applied fix suggestion for finding ${findingId}`,
+    actor: {
+      name: "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    timestamp: new Date().toISOString(),
+    description: "Code suggestion applied to PR diff.",
+  });
+
+  logActivity({
+    type: "review_suggestion_applied",
+    title: `Applied Suggestion on PR #${pr.number}`,
+    description: `Remediation patch applied for finding ${findingId}.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: "success",
+  });
+
+  saveStore(store);
+  return { success: true, message: "Suggestion applied to PR diff." };
+}
+
+export function updateFindingDecision(
+  prId: string,
+  findingId: string,
+  status: string,
+  reason?: string
+): boolean {
+  const store = getStore();
+  if (!store.pullRequests) return false;
+  const pr = store.pullRequests.find((p: any) => p.id === prId || String(p.number) === prId);
+  if (!pr) return false;
+
+  const sessionKey = `${pr.repositoryId || "sample-project"}_${pr.number}`;
+  if (store.reviewSessions?.[sessionKey]) {
+    const f = store.reviewSessions[sessionKey].findings?.find((x: any) => x.id === findingId);
+    if (f) {
+      f.status = status;
+      if (status === "dismissed") f.dismissReason = reason;
+      if (status === "accepted") f.accepted = true;
+    }
+  }
+
+  logActivity({
+    type: status === "accepted" ? "review_finding_accepted" : "review_finding_dismissed",
+    title: `${status === "accepted" ? "Accepted" : "Dismissed"} Finding ${findingId}`,
+    description: reason ? `Reason: ${reason}` : `Updated status to ${status}.`,
+    href: `/code-review?pr=${pr.id}`,
+    status: status === "accepted" ? "success" : "info",
+  });
+
+  saveStore(store);
+  return true;
+}
+
 

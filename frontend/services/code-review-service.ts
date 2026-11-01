@@ -1,107 +1,117 @@
+/**
+ * CodeAtlas Code Review Service
+ * Operates client-side with shared store persistence, local static checks,
+ * and direct Firebase AI Logic (Gemini Flash) review execution.
+ */
+
 import {
   PullRequestDetail,
   ReviewSession,
   FindingStatus,
+  ReviewFinding,
 } from "@/types/review";
-import { apiClient } from "./api-client";
+import {
+  getPullRequests as getStorePullRequests,
+  getPullRequestById,
+  updateFindingDecision,
+  addInlineComment,
+  getStore,
+  saveStore,
+  logActivity,
+} from "@/lib/demo/store";
+import { executeAIReview } from "@/lib/demo/review-engine";
 
 class CodeReviewService {
   async getPullRequests(
     repositoryId: string = "sample-project",
-    state: "open" | "closed" | "all" = "open"
-  ): Promise<any[]> {
-    try {
-      const res = await apiClient.get<any>(
-        `/api/github/pulls?repoId=${encodeURIComponent(repositoryId)}&state=${state}`
-      );
-      const json = res.data || {};
-      const list = Array.isArray(res.data) ? res.data : json.data;
-      if (res.success && Array.isArray(list)) {
-        return list;
-      }
-    } catch (err) {
-      console.warn("Failed to fetch pull requests:", err);
-    }
-    return [];
+    sourceFilter: string = "all",
+    tabFilter: string = "open"
+  ): Promise<PullRequestDetail[]> {
+    return getStorePullRequests(repositoryId, sourceFilter, tabFilter);
   }
 
   async getPullRequestDetail(
     repositoryId: string = "sample-project",
-    pullNumber: number = 101
+    pullNumber: number | string = 101
   ): Promise<PullRequestDetail | null> {
-    try {
-      const res = await apiClient.get<any>(
-        `/api/github/pulls/${pullNumber}?repoId=${encodeURIComponent(repositoryId)}`
-      );
-      const json = res.data || {};
-      if (res.success && (json.data || json.pullRequest)) {
-        return json.data || json.pullRequest || json;
-      }
-    } catch (err) {
-      console.warn("Failed to fetch pull request detail:", err);
-    }
-    return null;
+    return getPullRequestById(pullNumber);
   }
 
   async runCodeReview(
     repositoryId: string = "sample-project",
-    pullRequestNumber: number = 101,
-    isSecurityReviewOnly: boolean = false
+    pullRequestNumber: number | string = 101,
+    isSecurityReviewOnly: boolean = false,
+    onChunk?: (text: string) => void,
+    signal?: AbortSignal
   ): Promise<ReviewSession | null> {
+    const pr = getPullRequestById(pullRequestNumber);
+    if (!pr) return null;
+
     try {
-      const res = await apiClient.post<any>("/api/review/analyze", {
-        repositoryId,
-        pullRequestNumber,
-        isSecurityReviewOnly,
+      const result = await executeAIReview(pr, {
+        isSecurityOnly: isSecurityReviewOnly,
+        onChunk,
+        signal,
       });
-      const json = res.data || {};
-      if (res.success && (json.data || json.session)) {
-        const sess = json.data?.session || json.session || json.data || json;
-        if (sess && !sess.findings) sess.findings = [];
-        return sess;
+
+      const store = getStore();
+      if (!store.reviewSessions) store.reviewSessions = {};
+
+      const sessionKey = `${repositoryId}_${pr.number}`;
+      const session: ReviewSession = {
+        id: `rev_session_${sessionKey}_${Date.now()}`,
+        repositoryId,
+        pullRequestId: pr.id,
+        pullRequestNumber: pr.number,
+        commitSha: pr.headSha,
+        createdAt: new Date().toISOString(),
+        summary: result.summary.risk || result.summary.what,
+        findings: result.findings,
+        affectedComponents: result.affectedComponents,
+        relatedTests: result.relatedTests,
+        isSecurityReviewOnly,
+        isStale: false,
+        isSimulated: false,
+        riskLevel: result.riskLevel,
+        riskScore: result.riskScore,
+      };
+
+      store.reviewSessions[sessionKey] = session;
+
+      // Update PR metadata with risk score & AI summary
+      const prInStore = store.pullRequests?.find((p: any) => p.id === pr.id);
+      if (prInStore) {
+        prInStore.riskScore = result.riskScore;
+        prInStore.riskLevel = result.riskLevel;
+        prInStore.aiSummary = result.summary;
       }
-    } catch (err) {
+
+      saveStore(store);
+      return session;
+    } catch (err: any) {
       console.error("Code review execution failed:", err);
+      return null;
     }
-    return null;
   }
 
   async getReviewSession(
     repositoryId: string,
-    pullRequestNumber: number
+    pullRequestNumber: number | string
   ): Promise<ReviewSession | null> {
-    try {
-      const res = await apiClient.get<any>(
-        `/api/review/session?repoId=${encodeURIComponent(repositoryId)}&prNumber=${pullRequestNumber}`
-      );
-      const json = res.data || {};
-      if (res.success && (json.data || json.session)) {
-        return json.data || json.session || json;
-      }
-    } catch (err) {
-      console.warn("Failed to retrieve review session:", err);
-    }
-    return null;
+    const store = getStore();
+    const sessionKey = `${repositoryId}_${pullRequestNumber}`;
+    return store.reviewSessions?.[sessionKey] || null;
   }
 
   async updateFindingStatus(
     sessionId: string,
     findingId: string,
     status: FindingStatus,
-    dismissReason?: string
+    reason?: string,
+    prId?: string
   ): Promise<boolean> {
-    try {
-      const res = await apiClient.patch<any>("/api/review/finding", {
-        sessionId,
-        findingId,
-        status,
-        dismissReason,
-      });
-      return res.success;
-    } catch (err) {
-      console.error("Failed to update finding status:", err);
-      return false;
-    }
+    const targetPrId = prId || sessionId.split("_")[2] || "pr_101";
+    return updateFindingDecision(targetPrId, findingId, status, reason);
   }
 
   async publishCommentToGitHub(
@@ -110,22 +120,29 @@ class CodeReviewService {
     findingId: string,
     commentBody: string
   ): Promise<{ success: boolean; commentUrl?: string; message?: string }> {
-    try {
-      const res = await apiClient.post<any>("/api/review/publish-comment", {
-        repositoryId,
-        pullRequestNumber,
-        findingId,
-        commentBody,
-      });
-      const json = res.data || {};
-      return {
-        success: res.success,
-        commentUrl: json.commentUrl,
-        message: json.message || res.message,
-      };
-    } catch (err: any) {
-      return { success: false, message: err.message || "Failed to publish comment" };
-    }
+    const pr = getPullRequestById(pullRequestNumber);
+    if (!pr) return { success: false, message: "PR not found" };
+
+    // Record comment into PR timeline and inline comments
+    addInlineComment(pr.id, {
+      file: pr.files?.[0]?.filename || "src/main.ts",
+      line: 1,
+      text: commentBody,
+    });
+
+    logActivity({
+      type: "review_comment_published",
+      title: `Published Review Comment on PR #${pullRequestNumber}`,
+      description: commentBody.slice(0, 100),
+      href: `/code-review?pr=${pr.id}`,
+      status: "success",
+    });
+
+    return {
+      success: true,
+      commentUrl: `https://github.com/codeatlas-demo/${repositoryId}/pull/${pullRequestNumber}#issuecomment-${Date.now()}`,
+      message: "Review comment published and recorded in audit trail.",
+    };
   }
 }
 
