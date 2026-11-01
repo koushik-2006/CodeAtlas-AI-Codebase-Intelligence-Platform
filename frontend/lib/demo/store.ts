@@ -75,6 +75,10 @@ export interface DemoStoreData {
   multiRepoAnalysis?: any;
   activeWorkspaceId?: string;
   explorerHistory?: CodeAnalysisHistoryItem[];
+  architectureNodePositions?: Record<string, Record<string, { x: number; y: number }>>;
+  architectureLayerOverrides?: Record<string, Record<string, string>>;
+  architectureLayerRules?: Record<string, any[]>;
+  architectureAiOverviews?: Record<string, { summary: string; mermaid: string; timestamp: string }>;
 }
 
 export interface CodeAnalysisHistoryItem {
@@ -1608,6 +1612,10 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
         services: ["web-gateway", "ast-resolver", "cache-service"],
       },
     ],
+    architectureNodePositions: {},
+    architectureLayerOverrides: {},
+    architectureLayerRules: {},
+    architectureAiOverviews: {},
     explorerHistory: [
       {
         id: "hist_sample_1",
@@ -3133,4 +3141,91 @@ export function addDebugFollowUp(invId: string, followUp: any): void {
   if (!store.debugFollowUps[invId]) store.debugFollowUps[invId] = [];
   store.debugFollowUps[invId].push(followUp);
   saveStore(store);
+}
+
+// ---------------------------------------------------------------------------
+// Architecture Persistence Helpers
+// ---------------------------------------------------------------------------
+
+export function saveArchitecturePositions(
+  repoId: string,
+  level: string,
+  positions: Record<string, { x: number; y: number }>
+): void {
+  const store = getStore();
+  if (!store.architectureNodePositions) store.architectureNodePositions = {};
+  const key = `${repoId || "all"}_${level || "files"}`;
+  store.architectureNodePositions[key] = {
+    ...(store.architectureNodePositions[key] || {}),
+    ...positions,
+  };
+  saveStore(store);
+}
+
+export function getArchitecturePositions(
+  repoId: string,
+  level: string
+): Record<string, { x: number; y: number }> {
+  const store = getStore();
+  const key = `${repoId || "all"}_${level || "files"}`;
+  return store.architectureNodePositions?.[key] || {};
+}
+
+export function saveArchitectureLayerOverride(
+  repoId: string,
+  itemPath: string,
+  layer: string
+): void {
+  const store = getStore();
+  if (!store.architectureLayerOverrides) store.architectureLayerOverrides = {};
+  if (!store.architectureLayerOverrides[repoId]) store.architectureLayerOverrides[repoId] = {};
+  store.architectureLayerOverrides[repoId][itemPath] = layer;
+
+  logActivity({
+    type: "architecture_layer_assigned",
+    title: "Reassigned Architecture Layer",
+    description: `Reassigned ${itemPath} to layer '${layer}' in ${repoId}.`,
+    href: `/architecture?repo=${repoId}`,
+    status: "success",
+  });
+
+  saveStore(store);
+}
+
+export function saveArchitectureLayerRules(repoId: string, rules: any[]): void {
+  const store = getStore();
+  if (!store.architectureLayerRules) store.architectureLayerRules = {};
+  store.architectureLayerRules[repoId] = rules;
+
+  logActivity({
+    type: "architecture_rules_updated",
+    title: "Updated Architecture Layer Rules",
+    description: `Updated architectural boundary rules for ${repoId}.`,
+    href: `/architecture?repo=${repoId}`,
+    status: "success",
+  });
+
+  saveStore(store);
+}
+
+export function getArchitectureLayerRules(repoId: string): any[] | null {
+  const store = getStore();
+  return store.architectureLayerRules?.[repoId] || null;
+}
+
+export function saveArchitectureAiOverview(
+  repoId: string,
+  overview: { summary: string; mermaid: string; timestamp: string }
+): void {
+  const store = getStore();
+  if (!store.architectureAiOverviews) store.architectureAiOverviews = {};
+  store.architectureAiOverviews[repoId] = overview;
+  saveStore(store);
+}
+
+export function getArchitectureAiOverview(
+  repoId: string
+): { summary: string; mermaid: string; timestamp: string } | null {
+  const store = getStore();
+  return store.architectureAiOverviews?.[repoId] || null;
 }
