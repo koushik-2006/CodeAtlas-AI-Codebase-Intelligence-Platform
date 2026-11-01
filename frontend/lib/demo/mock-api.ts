@@ -1981,18 +1981,35 @@ export async function handleMockRequest(
   // 7. CODE REVIEW & CHANGE IMPACT
   // ---------------------------------------------------------------------------
   if (cleanPath === "/api/review/analyze") {
-    await delay(600);
+    await delay(200);
+    const sess = store.reviewSessions?.["sample-project_101"] || {
+      id: "sess_demo",
+      repositoryId: "sample-project",
+      pullRequestNumber: 101,
+      analyzedAt: new Date().toISOString(),
+      findings: [],
+      files: [],
+      metrics: { totalFindings: 0, criticalSecurityIssues: 0, architectureViolations: 0, testCoverageGaps: 0, codeSmells: 0 },
+    };
     return {
       success: true,
-      data: { session: store.reviewSessions["sample-project_101"] },
-      session: store.reviewSessions["sample-project_101"],
+      data: sess,
+      session: sess,
       timestamp,
     };
   }
 
   if (cleanPath === "/api/review/session") {
-    const sess = store.reviewSessions["sample-project_101"];
-    return { success: true, data: { session: sess }, session: sess, timestamp };
+    const sess = store.reviewSessions?.["sample-project_101"] || {
+      id: "sess_demo",
+      repositoryId: "sample-project",
+      pullRequestNumber: 101,
+      analyzedAt: new Date().toISOString(),
+      findings: [],
+      files: [],
+      metrics: { totalFindings: 0, criticalSecurityIssues: 0, architectureViolations: 0, testCoverageGaps: 0, codeSmells: 0 },
+    };
+    return { success: true, data: sess, session: sess, timestamp };
   }
 
   if (cleanPath === "/api/review/finding") {

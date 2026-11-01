@@ -1,116 +1,230 @@
 "use client";
 
-import React from "react";
-import { X, ShieldCheck, Lock, AlertCircle, Clock, CheckCircle2 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import {
+  X,
+  ShieldCheck,
+  Lock,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  SlidersHorizontal,
+  Building2,
+} from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { AgentToolDefinition } from "@/types/agent";
+import { AgentPolicy, WorkflowTemplate } from "@/types/agent";
 
 interface AgentPolicyModalProps {
   isOpen: boolean;
   onClose: () => void;
-  tools: AgentToolDefinition[];
+  policy: AgentPolicy;
+  workflows: WorkflowTemplate[];
+  workspaceName?: string;
+  onSavePolicy: (policy: Partial<AgentPolicy>) => void;
 }
 
-export function AgentPolicyModal({ isOpen, onClose, tools }: AgentPolicyModalProps) {
+export function AgentPolicyModal({
+  isOpen,
+  onClose,
+  policy,
+  workflows,
+  workspaceName = "Acme Engineering",
+  onSavePolicy,
+}: AgentPolicyModalProps) {
+  const [requireApproval, setRequireApproval] = useState<boolean>(true);
+  const [allowDependencyUpgrades, setAllowDependencyUpgrades] = useState<boolean>(true);
+  const [maxFiles, setMaxFiles] = useState<number>(5);
+  const [blockedPathsStr, setBlockedPathsStr] = useState<string>(".env, secrets/, .pem, id_rsa");
+  const [allowedTemplates, setAllowedTemplates] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (policy) {
+      setRequireApproval(policy.requireApproval ?? true);
+      setAllowDependencyUpgrades(policy.allowDependencyUpgrades ?? true);
+      setMaxFiles(policy.maxFilesPerRun || 5);
+      setBlockedPathsStr((policy.blockedPaths || [".env", "secrets/"]).join(", "));
+      setAllowedTemplates(policy.allowedTemplates || workflows.map((w) => w.id));
+    }
+  }, [policy, workflows]);
+
   if (!isOpen) return null;
 
+  const handleToggleTemplate = (tmplId: string) => {
+    if (allowedTemplates.includes(tmplId)) {
+      setAllowedTemplates(allowedTemplates.filter((id) => id !== tmplId));
+    } else {
+      setAllowedTemplates([...allowedTemplates, tmplId]);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const blockedList = blockedPathsStr
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+
+    onSavePolicy({
+      requireApproval,
+      allowDependencyUpgrades,
+      maxFilesPerRun: maxFiles,
+      blockedPaths: blockedList,
+      allowedTemplates,
+    });
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden my-8">
-        <div className="p-5 border-b border-[var(--border-color)] flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden my-8 animate-fade-in">
+        {/* Header */}
+        <div className="p-5 border-b border-[#EAE6FD] dark:border-[#1E2638] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#29D3C2]/20 border border-[#29D3C2]/30 flex items-center justify-center text-[#29D3C2]">
-              <ShieldCheck className="w-4 h-4" />
+            <div className="p-2.5 rounded-xl bg-[#7C5CFC]/10 text-[#7C5CFC] border border-[#7C5CFC]/20">
+              <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-[var(--text-primary)]">
-                Agent Safety Policy & Tool Registry
-              </h2>
-              <p className="text-xs text-[var(--text-secondary)]">
-                Strict boundaries, explicit developer gates, and zero arbitrary shell execution.
+              <div className="flex items-center gap-2">
+                <h3 className="text-base font-bold text-[#19143D] dark:text-[#F3F5FA]">
+                  Workspace Agent Safety Policies
+                </h3>
+                <Badge variant="brand" className="text-[10px]">
+                  {workspaceName}
+                </Badge>
+              </div>
+              <p className="text-xs text-[#6E6A8A] dark:text-[#8E95A8] mt-0.5">
+                Strict boundaries, restricted file paths, and mandatory human authorization gates.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-color)]/30"
+            className="p-1.5 rounded-lg text-[#8E95A8] hover:text-[#19143D] dark:hover:text-[#F3F5FA] hover:bg-neutral-100 dark:hover:bg-[#1A1F30]"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
-          {/* Policy Overview Callout */}
-          <div className="p-4 rounded-xl bg-gradient-to-r from-[#29D3C2]/10 via-[#8B7CFF]/10 to-transparent border border-[#29D3C2]/20 text-xs space-y-2">
-            <div className="font-semibold text-[#29D3C2] flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              Core Safety Invariants
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+          {/* Toggles */}
+          <div className="p-4 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] bg-[#F7F5FE]/60 dark:bg-[#141926]/60 space-y-3.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="font-bold text-[#19143D] dark:text-[#F3F5FA] block">
+                  Require Human Approval Before Apply
+                </span>
+                <span className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8]">
+                  Mandates explicit developer review at Step 6 before writing any diffs to the repository.
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={requireApproval}
+                onChange={(e) => setRequireApproval(e.target.checked)}
+                className="w-4 h-4 rounded text-[#7C5CFC] cursor-pointer"
+              />
             </div>
-            <ul className="space-y-1.5 text-[var(--text-secondary)] pl-2">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#29D3C2] shrink-0 mt-0.5" />
-                <span><strong>No Silent Overwrite:</strong> Mutating tools strictly require prior human authorization. Approval for one action never authorizes unrelated actions.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#29D3C2] shrink-0 mt-0.5" />
-                <span><strong>Untrusted Input Sanitization:</strong> Repository code, issue text, stack traces, and LLM text are strictly sanitized. They cannot grant additional permissions.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-[#29D3C2] shrink-0 mt-0.5" />
-                <span><strong>Grounding Verification:</strong> Every citation is validated against actual AST definitions and line number bounds.</span>
-              </li>
-            </ul>
+
+            <div className="flex items-center justify-between pt-3 border-t border-[#EAE6FD] dark:border-[#242B3D]">
+              <div>
+                <span className="font-bold text-[#19143D] dark:text-[#F3F5FA] block">
+                  Allow Automated Dependency Upgrades
+                </span>
+                <span className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8]">
+                  Enables runs that modify package manifests (package.json, requirements.txt, go.mod).
+                </span>
+              </div>
+              <input
+                type="checkbox"
+                checked={allowDependencyUpgrades}
+                onChange={(e) => setAllowDependencyUpgrades(e.target.checked)}
+                className="w-4 h-4 rounded text-[#7C5CFC] cursor-pointer"
+              />
+            </div>
           </div>
 
-          {/* Registered Tools */}
+          {/* Limits: Max files and Blocked paths */}
+          <div className="space-y-3">
+            <div>
+              <label className="font-semibold text-[#19143D] dark:text-[#F3F5FA] block mb-1">
+                Max Files Modified Per Run
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={maxFiles}
+                onChange={(e) => setMaxFiles(parseInt(e.target.value) || 1)}
+                className="w-24 px-3 py-1.5 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] bg-[#F7F5FE] dark:bg-[#141926] text-[#19143D] dark:text-[#F3F5FA] font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="font-semibold text-[#19143D] dark:text-[#F3F5FA] block mb-1">
+                Blocked File Paths (Comma-separated)
+              </label>
+              <input
+                type="text"
+                value={blockedPathsStr}
+                onChange={(e) => setBlockedPathsStr(e.target.value)}
+                placeholder=".env, secrets/, .pem, id_rsa"
+                className="w-full px-3 py-2 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] bg-[#F7F5FE] dark:bg-[#141926] text-[#19143D] dark:text-[#F3F5FA] font-mono outline-none focus:border-[#7C5CFC]"
+              />
+              <span className="text-[10px] text-[#8E95A8] mt-1 block">
+                Any run targeting matching paths will stop with 'Blocked by policy'.
+              </span>
+            </div>
+          </div>
+
+          {/* Allowed Templates */}
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-3">
-              Registered Safe Tools ({tools.length})
-            </h3>
-            <div className="space-y-2.5">
-              {tools.map((tool) => (
-                <div
-                  key={tool.id}
-                  className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]/60 flex flex-wrap items-center justify-between gap-3 text-xs"
-                >
-                  <div className="min-w-[200px] flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-bold text-[var(--text-primary)]">
-                        {tool.name}
-                      </span>
-                      <span className="font-mono text-[10px] text-[var(--text-secondary)]">
-                        ({tool.id})
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-[var(--text-secondary)]">
-                      {tool.description}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <Badge variant={tool.isMutating ? "coral" : "mint"} className="text-[10px]">
-                      {tool.isMutating ? "Mutating (Gate Required)" : "Read-Only"}
-                    </Badge>
-                    <span className="px-2 py-0.5 rounded bg-[var(--border-color)]/40 font-mono text-[10px] text-[var(--text-secondary)] flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {tool.timeoutMs / 1000}s
-                    </span>
-                    <span className="px-2 py-0.5 rounded bg-[#8B7CFF]/15 border border-[#8B7CFF]/30 font-mono text-[10px] text-[#8B7CFF]">
-                      {tool.requiredPermission}
-                    </span>
-                  </div>
-                </div>
-              ))}
+            <label className="font-semibold text-[#19143D] dark:text-[#F3F5FA] block mb-1.5">
+              Allowed Workflow Templates ({allowedTemplates.length} of {workflows.length} enabled)
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto pr-1">
+              {workflows.map((wf) => {
+                const isChecked = allowedTemplates.includes(wf.id);
+                return (
+                  <label
+                    key={wf.id}
+                    className={`flex items-center gap-2 p-2 rounded-xl border cursor-pointer transition-all ${
+                      isChecked
+                        ? "bg-[#7C5CFC]/10 border-[#7C5CFC] text-[#19143D] dark:text-[#F3F5FA]"
+                        : "bg-[#F7F5FE] dark:bg-[#141926] border-[#EAE6FD] dark:border-[#242B3D] text-[#8E95A8]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={isChecked}
+                      onChange={() => handleToggleTemplate(wf.id)}
+                      className="w-3.5 h-3.5 rounded text-[#7C5CFC]"
+                    />
+                    <span className="text-[11px] font-medium truncate">{wf.name}</span>
+                  </label>
+                );
+              })}
             </div>
           </div>
-        </div>
 
-        <div className="p-4 border-t border-[var(--border-color)] flex justify-end">
-          <Button variant="outline" size="sm" onClick={onClose}>
-            Close
-          </Button>
-        </div>
+          {/* Buttons */}
+          <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#EAE6FD] dark:border-[#1E2638]">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D] text-xs font-semibold"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-xl bg-[#7C5CFC] hover:bg-[#6A4BE8] text-white text-xs font-semibold shadow-sm cursor-pointer"
+            >
+              Save Policy Rules
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -56,7 +56,9 @@ class CodeReviewService {
       });
       const json = res.data || {};
       if (res.success && (json.data || json.session)) {
-        return json.data || json.session || json;
+        const sess = json.data?.session || json.session || json.data || json;
+        if (sess && !sess.findings) sess.findings = [];
+        return sess;
       }
     } catch (err) {
       console.error("Code review execution failed:", err);

@@ -372,3 +372,4 @@ export function APIContractsTab({ endpoints, isLoading }: APIContractsTabProps) 
     </div>
   );
 }
+

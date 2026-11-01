@@ -1,695 +1,769 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Play,
   Pause,
   RotateCcw,
   X,
-  Trash2,
   CheckCircle2,
   AlertTriangle,
   Clock,
-  ExternalLink,
-  Code2,
-  ShieldAlert,
-  HelpCircle,
-  FileText,
-  ThumbsUp,
-  ThumbsDown,
   Loader2,
   FolderGit2,
-  Sparkles,
-  Layers,
+  FileCode,
+  ShieldCheck,
+  Check,
+  Copy,
+  Send,
+  ExternalLink,
   ChevronRight,
-  Info,
+  GitPullRequest,
+  Split,
+  List,
+  Terminal,
+  FileDiff,
+  MessageSquare,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Card } from "@/components/ui/Card";
-import { AgentRun, AgentStep, ApprovalAction } from "@/types/agent";
+import { AgentRun, AgentStep, AgentLogLine } from "@/types/agent";
+import { synthesizeDiff } from "@/lib/demo/agent-engine";
+import Link from "next/link";
 
 interface AgentRunDetailViewProps {
   run: AgentRun;
-  onApproveAction: (actionId: string) => Promise<void>;
-  onRejectAction: (actionId: string, reason?: string) => Promise<void>;
-  onControlCommand: (command: "pause" | "resume" | "cancel" | "retry") => Promise<void>;
-  onDeleteRun: () => Promise<void>;
+  onApproveAndApply: () => Promise<void>;
+  onRequestChanges: (feedback: string) => Promise<void>;
+  onReject: () => Promise<void>;
+  onPause: () => void;
+  onResume: () => void;
+  onCancel: () => void;
+  onRetry: () => void;
+  onAskAgent: (question: string) => Promise<void>;
+  onBackToList?: () => void;
 }
 
 export function AgentRunDetailView({
   run,
-  onApproveAction,
-  onRejectAction,
-  onControlCommand,
-  onDeleteRun,
+  onApproveAndApply,
+  onRequestChanges,
+  onReject,
+  onPause,
+  onResume,
+  onCancel,
+  onRetry,
+  onAskAgent,
+  onBackToList,
 }: AgentRunDetailViewProps) {
-  const [activeTab, setActiveTab] = useState<"steps" | "plan" | "citations" | "findings" | "approval">("steps");
-  const [actionLoading, setActionLoading] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [showRejectModal, setShowRejectModal] = useState(false);
-  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [centerTab, setCenterTab] = useState<"diff" | "plan" | "logs">("diff");
+  const [diffViewMode, setDiffViewMode] = useState<"inline" | "split">("inline");
+  const [copiedLog, setCopiedLog] = useState(false);
+  const [copiedDiff, setCopiedDiff] = useState(false);
 
-  const pendingAction = run.actions.find((a) => a.status === "pending");
+  // Ask agent follow-up state
+  const [followUpText, setFollowUpText] = useState("");
+  const [isAsking, setIsAsking] = useState(false);
 
-  const handleApprove = async (actionId: string) => {
-    setActionLoading(true);
-    try {
-      await onApproveAction(actionId);
-    } finally {
-      setActionLoading(false);
+  // Request changes feedback state
+  const [isRequestChangesOpen, setIsRequestChangesOpen] = useState(false);
+  const [changesFeedback, setChangesFeedback] = useState("Add an extra test verifying that invalid email syntax throws an error.");
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  // Reject confirmation modal
+  const [isRejectConfirmOpen, setIsRejectConfirmOpen] = useState(false);
+  const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
+
+  const logsEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Auto-scroll logs
+  useEffect(() => {
+    if (centerTab === "logs" && logsEndRef.current) {
+      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [run.logs, centerTab]);
+
+  const handleCopyLogs = () => {
+    const text = (run.logs || []).map((l) => `[${l.timestamp}] ${l.level.toUpperCase()}: ${l.message}`).join("\n");
+    navigator.clipboard.writeText(text);
+    setCopiedLog(true);
+    setTimeout(() => setCopiedLog(false), 2000);
+  };
+
+  const handleCopyDiff = () => {
+    if (currentDiff?.patch) {
+      navigator.clipboard.writeText(currentDiff.patch);
+      setCopiedDiff(true);
+      setTimeout(() => setCopiedDiff(false), 2000);
     }
   };
 
-  const handleRejectConfirm = async () => {
-    if (!selectedActionId) return;
-    setActionLoading(true);
+  const handleSendFollowUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!followUpText.trim() || isAsking) return;
+    const q = followUpText.trim();
+    setFollowUpText("");
+    setIsAsking(true);
     try {
-      await onRejectAction(selectedActionId, rejectReason || "Rejected by developer");
-      setShowRejectModal(false);
-      setRejectReason("");
+      await onAskAgent(q);
+      setCenterTab("logs");
     } finally {
-      setActionLoading(false);
+      setIsAsking(false);
     }
   };
+
+  const handleApplyChanges = async () => {
+    if (!changesFeedback.trim() || isRegenerating) return;
+    setIsRegenerating(true);
+    try {
+      await onRequestChanges(changesFeedback.trim());
+      setIsRequestChangesOpen(false);
+      setCenterTab("diff");
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const isWaitingApproval = run.status === "awaiting_approval";
+  const isRunning = run.status === "running";
+  const isPaused = run.status === "paused";
+  const isCompleted = run.status === "completed";
+  const isFailed = run.status === "failed";
+  const isCancelled = run.status === "cancelled";
+
+  const currentDiff =
+    run.diff ||
+    (run.currentStepIndex >= 3 || isWaitingApproval || isCompleted
+      ? synthesizeDiff(run.templateId || "unit_tests", run.target || "src/services/auth.ts", undefined, run.instructions || "")
+      : null);
 
   return (
-    <div className="flex flex-col h-full bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl overflow-hidden shadow-lg">
-      {/* Top Banner */}
-      <div className="p-5 border-b border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4 bg-[var(--card-bg)]/80 backdrop-blur-md">
-        <div className="flex-1 min-w-[280px]">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-xs font-mono px-2 py-0.5 rounded bg-[var(--border-color)]/50 text-[var(--text-secondary)]">
-              {run.id}
-            </span>
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#8B7CFF]">
-              {run.agentType.replace("_", " ")}
-            </span>
-            <div className="flex items-center gap-1 text-xs text-[var(--text-secondary)] font-mono ml-2">
-              <FolderGit2 className="w-3.5 h-3.5" />
-              <span>{run.repositoryName}</span>
-            </div>
-          </div>
-          <h2 className="text-lg font-bold text-[var(--text-primary)]">
-            {run.taskPrompt}
+    <div className="bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] rounded-2xl shadow-sm overflow-hidden flex flex-col h-full animate-fade-in">
+      {/* Top Breadcrumb & Status Header */}
+      <div className="p-4 sm:p-5 border-b border-[#EAE6FD] dark:border-[#1E2638] flex flex-wrap items-center justify-between gap-3 bg-[#F7F5FE]/50 dark:bg-[#121624]/50">
+        <div className="flex items-center gap-2.5">
+          {onBackToList && (
+            <button
+              onClick={onBackToList}
+              className="px-2.5 py-1 text-xs font-semibold text-[#7C5CFC] hover:underline cursor-pointer"
+            >
+              ← All Runs
+            </button>
+          )}
+          <span className="text-[#8E95A8] text-xs font-mono">/</span>
+          <span className="text-xs font-mono px-2 py-0.5 rounded-lg bg-neutral-100 dark:bg-[#1A1F30] text-[#6E6A8A] dark:text-[#8E95A8] border border-[#EAE6FD] dark:border-[#242B3D]">
+            {run.id}
+          </span>
+          <h2 className="text-sm sm:text-base font-bold text-[#19143D] dark:text-[#F3F5FA] truncate max-w-[320px] sm:max-w-md">
+            {run.title || run.taskPrompt}
           </h2>
         </div>
 
-        {/* Action Controls */}
         <div className="flex items-center gap-2">
-          {run.status === "running" && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onControlCommand("pause")}
-              className="flex items-center gap-1.5 text-xs text-yellow-400"
-            >
+          {isWaitingApproval && (
+            <Badge variant="coral" className="flex items-center gap-1.5 text-xs animate-pulse">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Waiting for Approval</span>
+            </Badge>
+          )}
+          {isRunning && (
+            <Badge variant="cyan" className="flex items-center gap-1.5 text-xs">
+              <span className="w-2 h-2 rounded-full bg-[#29D3C2] animate-ping" />
+              <span>Step {run.currentStepIndex + 1}/7 Running</span>
+            </Badge>
+          )}
+          {isCompleted && (
+            <Badge variant="mint" className="flex items-center gap-1.5 text-xs">
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Completed</span>
+            </Badge>
+          )}
+          {isPaused && (
+            <Badge variant="sun" className="flex items-center gap-1.5 text-xs">
               <Pause className="w-3.5 h-3.5" />
-              Pause
-            </Button>
+              <span>Paused</span>
+            </Badge>
           )}
-
-          {run.status === "paused" && (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => onControlCommand("resume")}
-              className="flex items-center gap-1.5 text-xs"
-            >
-              <Play className="w-3.5 h-3.5" />
-              Resume
-            </Button>
+          {isFailed && (
+            <Badge variant="coral" className="flex items-center gap-1.5 text-xs">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Failed</span>
+            </Badge>
           )}
-
-          {(run.status === "failed" || run.status === "cancelled") && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onControlCommand("retry")}
-              className="flex items-center gap-1.5 text-xs text-[#29D3C2]"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Retry Run
-            </Button>
-          )}
-
-          {(run.status === "running" || run.status === "awaiting_approval") && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onControlCommand("cancel")}
-              className="flex items-center gap-1.5 text-xs text-red-400"
-            >
+          {isCancelled && (
+            <Badge variant="coral" className="flex items-center gap-1.5 text-xs">
               <X className="w-3.5 h-3.5" />
-              Cancel
-            </Button>
+              <span>Cancelled</span>
+            </Badge>
           )}
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onDeleteRun}
-            className="text-[var(--text-secondary)] hover:text-red-400 p-2"
-            title="Delete Run"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
         </div>
       </div>
 
-      {/* Pending Approval Alert Banner */}
-      {pendingAction && (
-        <div className="px-5 py-3.5 bg-red-500/10 border-b border-red-500/20 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400">
-              <AlertTriangle className="w-4 h-4 animate-bounce" />
-            </div>
-            <div>
-              <div className="text-sm font-semibold text-red-400">
-                Action Requires Developer Authorization: {pendingAction.title}
-              </div>
-              <div className="text-xs text-[var(--text-secondary)]">
-                {pendingAction.description} • Risk Level: <strong className="uppercase">{pendingAction.riskLevel}</strong>
-              </div>
-            </div>
+      {/* Main 3-Column Layout: Left (Timeline), Center (Diff/Plan/Logs), Right (Info & Actions) */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 min-h-0 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-[#EAE6FD] dark:divide-[#1E2638]">
+        {/* LEFT COLUMN: 7-Step Pipeline Timeline */}
+        <div className="lg:col-span-3 p-4 sm:p-5 overflow-y-auto max-h-[300px] lg:max-h-none space-y-4 bg-white dark:bg-[#0D111A]">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#8E95A8]">
+              Pipeline Timeline
+            </h3>
+            <span className="text-[11px] font-mono text-[#7C5CFC] font-semibold">
+              7 Steps
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="accent"
-              size="sm"
-              disabled={actionLoading}
-              onClick={() => handleApprove(pendingAction.id)}
-              className="flex items-center gap-1.5 text-xs bg-[#2FD6A0] text-[#070A12] hover:bg-[#28b889]"
-            >
-              {actionLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ThumbsUp className="w-3.5 h-3.5" />}
-              Approve & Apply
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={actionLoading}
-              onClick={() => {
-                setSelectedActionId(pendingAction.id);
-                setShowRejectModal(true);
-              }}
-              className="flex items-center gap-1.5 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
-            >
-              <ThumbsDown className="w-3.5 h-3.5" />
-              Reject
-            </Button>
+          <div className="space-y-3 relative before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-[#EAE6FD] dark:before:bg-[#1E2638]">
+            {(run.steps || []).map((step, idx) => {
+              const isCurrent = idx === run.currentStepIndex && run.status !== "completed";
+              const isDone = step.status === "completed" || (run.status === "completed" && idx <= 6);
+              const isWaiting = step.status === "waiting" || (isWaitingApproval && idx === 5);
+              const isStepFailed = step.status === "failed" || (isFailed && idx === run.currentStepIndex);
+
+              return (
+                <div key={step.id} className="relative flex items-start gap-3 text-xs group">
+                  {/* Status Circle Icon */}
+                  <div
+                    className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center shrink-0 border transition-all ${
+                      isDone
+                        ? "bg-emerald-500 text-white border-emerald-500"
+                        : isCurrent && isRunning
+                        ? "bg-[#7C5CFC] text-white border-[#7C5CFC] shadow-sm animate-pulse"
+                        : isWaiting
+                        ? "bg-amber-500 text-white border-amber-500"
+                        : isStepFailed
+                        ? "bg-red-500 text-white border-red-500"
+                        : "bg-white dark:bg-[#0D111A] text-[#8E95A8] border-[#EAE6FD] dark:border-[#242B3D]"
+                    }`}
+                  >
+                    {isDone ? (
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                    ) : isCurrent && isRunning ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isWaiting ? (
+                      <Clock className="w-3.5 h-3.5" />
+                    ) : isStepFailed ? (
+                      <X className="w-3.5 h-3.5 stroke-[3]" />
+                    ) : (
+                      <span className="text-[10px] font-bold font-mono">{idx + 1}</span>
+                    )}
+                  </div>
+
+                  {/* Step Title & Details */}
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="flex items-center justify-between gap-1">
+                      <span
+                        className={`font-semibold text-xs truncate ${
+                          isCurrent
+                            ? "text-[#7C5CFC] font-bold"
+                            : isDone
+                            ? "text-[#19143D] dark:text-[#F3F5FA]"
+                            : "text-[#6E6A8A] dark:text-[#8E95A8]"
+                        }`}
+                      >
+                        {step.title}
+                      </span>
+                      {step.durationMs ? (
+                        <span className="text-[10px] font-mono text-[#8E95A8] shrink-0">
+                          {Math.round(step.durationMs / 1000)}s
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8] line-clamp-1 mt-0.5">
+                      {step.description}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CENTER COLUMN: Diff Viewer, Plan Checklist, Live Log Stream & Gate */}
+        <div className="lg:col-span-6 p-4 sm:p-5 flex flex-col justify-between overflow-y-auto space-y-4">
+          <div className="space-y-4">
+            {run.status === "failed" && run.errorDetails && (
+              <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-700 dark:text-red-300 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                <div className="space-y-1">
+                  <span className="font-bold block">Execution Blocked: {run.errorDetails}</span>
+                  <p className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8]">
+                    This run was stopped to protect the codebase according to workspace safety policies.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Center Tab Selector */}
+            <div className="flex items-center justify-between border-b border-[#EAE6FD] dark:border-[#1E2638] pb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCenterTab("diff")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                    centerTab === "diff"
+                      ? "bg-[#7C5CFC]/15 text-[#7C5CFC]"
+                      : "text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D]"
+                  }`}
+                >
+                  <FileDiff className="w-3.5 h-3.5" />
+                  <span>Propose Changes (Diff)</span>
+                  {currentDiff && (
+                    <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                      +{currentDiff.additions}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setCenterTab("plan")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                    centerTab === "plan"
+                      ? "bg-[#7C5CFC]/15 text-[#7C5CFC]"
+                      : "text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D]"
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span>Plan Checklist</span>
+                </button>
+
+                <button
+                  onClick={() => setCenterTab("logs")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                    centerTab === "logs"
+                      ? "bg-[#7C5CFC]/15 text-[#7C5CFC]"
+                      : "text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D]"
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>Live Logs</span>
+                  <span className="px-1.5 py-0.2 rounded-full bg-neutral-200 dark:bg-[#1A1F30] text-[10px] font-mono">
+                    {run.logs?.length || 0}
+                  </span>
+                </button>
+              </div>
+
+              {centerTab === "diff" && currentDiff && (
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setDiffViewMode(diffViewMode === "inline" ? "split" : "inline")}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] rounded-lg border border-[#EAE6FD] dark:border-[#242B3D] text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D] cursor-pointer"
+                    title="Toggle inline vs side-by-side split"
+                  >
+                    <Split className="w-3 h-3" />
+                    <span>{diffViewMode === "inline" ? "Side-by-Side" : "Inline"}</span>
+                  </button>
+                  <button
+                    onClick={handleCopyDiff}
+                    className="p-1 rounded-lg border border-[#EAE6FD] dark:border-[#242B3D] text-[#8E95A8] hover:text-[#19143D] cursor-pointer"
+                    title="Copy diff patch"
+                  >
+                    {copiedDiff ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              )}
+
+              {centerTab === "logs" && (
+                <button
+                  onClick={handleCopyLogs}
+                  className="flex items-center gap-1 px-2 py-1 text-[11px] rounded-lg border border-[#EAE6FD] dark:border-[#242B3D] text-[#8E95A8] hover:text-[#19143D] cursor-pointer"
+                >
+                  {copiedLog ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                  <span>Copy</span>
+                </button>
+              )}
+            </div>
+
+            {/* TAB CONTENT 1: Unified Diff Viewer */}
+            {centerTab === "diff" && (
+              <div className="space-y-3">
+                {currentDiff ? (
+                  <div className="border border-[#EAE6FD] dark:border-[#1E2638] rounded-xl overflow-hidden bg-neutral-50 dark:bg-[#090C15] font-mono text-[11px]">
+                    {/* Diff Header */}
+                    <div className="px-3 py-2 bg-neutral-100 dark:bg-[#121624] border-b border-[#EAE6FD] dark:border-[#1E2638] flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileCode className="w-3.5 h-3.5 text-[#7C5CFC]" />
+                        <span className="font-bold text-[#19143D] dark:text-[#F3F5FA]">{currentDiff.file}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[10px]">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-bold">+{currentDiff.additions}</span>
+                        <span className="text-red-600 dark:text-red-400 font-bold">-{currentDiff.deletions}</span>
+                      </div>
+                    </div>
+
+                    {/* Diff Code Display */}
+                    <div className="p-3 overflow-x-auto max-h-[380px] space-y-0.5 leading-relaxed select-text">
+                      {currentDiff.patch.split("\n").map((line, idx) => {
+                        const isAdd = line.startsWith("+");
+                        const isDel = line.startsWith("-");
+                        const isHunk = line.startsWith("@@");
+
+                        return (
+                          <div
+                            key={idx}
+                            className={`flex items-start px-2 py-0.5 rounded-sm ${
+                              isAdd
+                                ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-semibold"
+                                : isDel
+                                ? "bg-red-500/15 text-red-700 dark:text-red-300 font-semibold"
+                                : isHunk
+                                ? "bg-[#7C5CFC]/10 text-[#7C5CFC] font-bold"
+                                : "text-[#19143D] dark:text-[#CBD5E1]"
+                            }`}
+                          >
+                            <span className="w-8 shrink-0 select-none text-[10px] text-[#8E95A8] font-normal">
+                              {idx + 1}
+                            </span>
+                            <pre className="font-mono whitespace-pre-wrap">{line}</pre>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-8 text-center border border-dashed border-[#EAE6FD] dark:border-[#1E2638] rounded-xl text-xs text-[#8E95A8]">
+                    <span>Diff will appear once the agent executes Step 4 (Propose changes).</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB CONTENT 2: Plan Checklist */}
+            {centerTab === "plan" && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-[#19143D] dark:text-[#F3F5FA] mb-2">
+                  Model Plan & Verification Milestones
+                </h4>
+                {(run.planChecklist || []).map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-start gap-2.5 p-2.5 rounded-xl border border-[#EAE6FD] dark:border-[#1E2638] bg-[#F7F5FE]/40 dark:bg-[#121624]/40 text-xs"
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-md mt-0.5 flex items-center justify-center shrink-0 border ${
+                        item.done
+                          ? "bg-emerald-500 border-emerald-500 text-white"
+                          : "border-[#8E95A8] text-transparent"
+                      }`}
+                    >
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </div>
+                    <span className={item.done ? "text-[#19143D] dark:text-[#F3F5FA] font-medium" : "text-[#6E6A8A] dark:text-[#8E95A8]"}>
+                      {item.text}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TAB CONTENT 3: Live Log Stream */}
+            {centerTab === "logs" && (
+              <div className="border border-[#EAE6FD] dark:border-[#1E2638] rounded-xl overflow-hidden bg-neutral-900 text-emerald-400 font-mono text-[11px] p-3 max-h-[380px] overflow-y-auto space-y-1.5 shadow-inner">
+                {(run.logs || []).map((l) => (
+                  <div key={l.id} className="flex items-start gap-2">
+                    <span className="text-[#8E95A8] select-none shrink-0">[{l.timestamp}]</span>
+                    <span
+                      className={`font-bold select-none shrink-0 ${
+                        l.level === "error"
+                          ? "text-red-400"
+                          : l.level === "warn"
+                          ? "text-amber-400"
+                          : l.level === "success"
+                          ? "text-emerald-300"
+                          : "text-indigo-400"
+                      }`}
+                    >
+                      {l.level.toUpperCase()}:
+                    </span>
+                    <span className="text-neutral-200 whitespace-pre-wrap">{l.message}</span>
+                  </div>
+                ))}
+                <div ref={logsEndRef} />
+              </div>
+            )}
+          </div>
+
+          {/* APPROVAL GATE & FOLLOW-UP CONTROLS */}
+          <div className="space-y-3 pt-3 border-t border-[#EAE6FD] dark:border-[#1E2638]">
+            {/* Approval Gate Banner (Visible if waiting approval) */}
+            {isWaitingApproval && (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1 rounded-md bg-amber-500 text-white">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-[#19143D] dark:text-[#F3F5FA] block">
+                      Human Authorization Gate (Step 6/7)
+                    </span>
+                    <span className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8]">
+                      Verify the synthesized unified diff above. Applying will commit file changes and create a Pull Request in Code Review.
+                    </span>
+                  </div>
+                </div>
+
+                {isRequestChangesOpen ? (
+                  <div className="space-y-2 pt-2 border-t border-amber-500/20">
+                    <label className="font-bold text-[#19143D] dark:text-[#F3F5FA] block">
+                      Developer Feedback / Requested Adjustments:
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={changesFeedback}
+                      onChange={(e) => setChangesFeedback(e.target.value)}
+                      placeholder="e.g. Add an extra test case verifying inactive account behavior..."
+                      className="w-full px-3 py-1.5 rounded-xl border border-amber-300 dark:border-amber-800 bg-white dark:bg-[#0D111A] text-[#19143D] dark:text-[#F3F5FA] outline-none"
+                    />
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => setIsRequestChangesOpen(false)}
+                        className="px-3 py-1 text-xs text-[#8E95A8] hover:text-[#19143D]"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleApplyChanges}
+                        disabled={isRegenerating}
+                        className="px-3 py-1 rounded-lg bg-[#7C5CFC] hover:bg-[#6A4BE8] text-white text-xs font-semibold shadow-xs cursor-pointer"
+                      >
+                        {isRegenerating ? "Regenerating Diff..." : "Submit Feedback & Regenerate"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={onApproveAndApply}
+                        className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        <span>Approve & Apply</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsRequestChangesOpen(true)}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-400 dark:border-amber-700 bg-white dark:bg-[#0D111A] text-amber-700 dark:text-amber-300 text-xs font-semibold hover:bg-amber-50 cursor-pointer"
+                      >
+                        <MessageSquare className="w-3.5 h-3.5" />
+                        <span>Request changes</span>
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={() => setIsRejectConfirmOpen(true)}
+                      className="px-3 py-2 text-xs text-red-500 hover:text-red-700 hover:underline cursor-pointer"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* "Ask Agent" Follow-up Question Box */}
+            <form onSubmit={handleSendFollowUp} className="flex items-center gap-2">
+              <input
+                type="text"
+                value={followUpText}
+                onChange={(e) => setFollowUpText(e.target.value)}
+                placeholder="Ask agent a question or clarify instructions..."
+                className="flex-1 px-3 py-2 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] bg-[#F7F5FE] dark:bg-[#141926] text-xs text-[#19143D] dark:text-[#F3F5FA] outline-none focus:border-[#7C5CFC]"
+              />
+              <button
+                type="submit"
+                disabled={isAsking || !followUpText.trim()}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#7C5CFC] hover:bg-[#6A4BE8] text-white text-xs font-semibold disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                <Send className="w-3 h-3" />
+                <span>{isAsking ? "Asking..." : "Ask Agent"}</span>
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN: Run Info & Controls */}
+        <div className="lg:col-span-3 p-4 sm:p-5 overflow-y-auto space-y-4 bg-[#F7F5FE]/30 dark:bg-[#121624]/30">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-[#8E95A8]">
+            Run Specification
+          </h3>
+
+          <div className="space-y-3 text-xs">
+            {/* Repository Info */}
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] space-y-1">
+              <span className="text-[10px] font-bold text-[#8E95A8] uppercase tracking-wider block">Repository</span>
+              <div className="flex items-center justify-between font-mono">
+                <span className="font-bold text-[#19143D] dark:text-[#F3F5FA]">{run.repositoryName || run.repositoryId}</span>
+                <Link
+                  href={`/repositories/${run.repositoryId}`}
+                  className="text-[#7C5CFC] hover:underline flex items-center gap-1 text-[11px]"
+                >
+                  <span>Open</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+            </div>
+
+            {/* Template Info */}
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] space-y-1">
+              <span className="text-[10px] font-bold text-[#8E95A8] uppercase tracking-wider block">Template</span>
+              <span className="font-bold text-[#19143D] dark:text-[#F3F5FA] block">{run.templateName || run.templateId}</span>
+              <span className="text-[11px] text-[#6E6A8A] dark:text-[#8E95A8] block">Agent Type: {run.agentType}</span>
+            </div>
+
+            {/* Files Touched */}
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] space-y-1.5">
+              <span className="text-[10px] font-bold text-[#8E95A8] uppercase tracking-wider block">Files Touched</span>
+              {(run.filesTouched || [run.target || "src/services/auth.ts"]).map((f, i) => (
+                <div key={i} className="flex items-center gap-1.5 text-[11px] font-mono text-[#7C5CFC]">
+                  <FileCode className="w-3.5 h-3.5" />
+                  <span className="truncate">{f}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Execution Metrics */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638]">
+                <span className="text-[10px] text-[#8E95A8] block">Tokens Used</span>
+                <span className="font-bold font-mono text-[#19143D] dark:text-[#F3F5FA]">
+                  {run.tokensUsed || 1840}
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638]">
+                <span className="text-[10px] text-[#8E95A8] block">Elapsed Time</span>
+                <span className="font-bold font-mono text-[#19143D] dark:text-[#F3F5FA]">
+                  {run.durationSeconds || 32}s
+                </span>
+              </div>
+            </div>
+
+            {/* Policy Applied Badge */}
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block text-[11px]">Policy Applied:</span>
+                <span className="text-[11px]">Strict developer approval gate enforced before commit.</span>
+              </div>
+            </div>
+
+            {/* Pull Request Link (If Created) */}
+            {run.pullRequestId && (
+              <div className="p-3 rounded-xl bg-[#7C5CFC]/10 border border-[#7C5CFC]/30 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-[#7C5CFC]">
+                  <GitPullRequest className="w-4 h-4" />
+                  <span>Pull Request Registered</span>
+                </div>
+                <Link
+                  href="/code-review"
+                  className="w-full flex items-center justify-center gap-1 py-1.5 rounded-lg bg-[#7C5CFC] text-white text-xs font-semibold hover:bg-[#6A4BE8] transition-colors"
+                >
+                  <span>Open in Code Review</span>
+                  <ExternalLink className="w-3 h-3" />
+                </Link>
+              </div>
+            )}
+
+            {/* Control Buttons */}
+            <div className="space-y-2 pt-2 border-t border-[#EAE6FD] dark:border-[#1E2638]">
+              {isRunning && (
+                <button
+                  onClick={onPause}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-[#EAE6FD] dark:border-[#242B3D] text-[#6E6A8A] dark:text-[#8E95A8] hover:text-[#19143D] text-xs font-semibold cursor-pointer"
+                >
+                  <Pause className="w-3.5 h-3.5" />
+                  <span>Pause Run</span>
+                </button>
+              )}
+
+              {isPaused && (
+                <button
+                  onClick={onResume}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 cursor-pointer shadow-xs"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Resume Run</span>
+                </button>
+              )}
+
+              {isFailed && (
+                <button
+                  onClick={onRetry}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#7C5CFC] text-white text-xs font-semibold hover:bg-[#6A4BE8] cursor-pointer shadow-xs"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Retry Failed Step</span>
+                </button>
+              )}
+
+              {(isRunning || isPaused || isWaitingApproval) && (
+                <button
+                  onClick={() => setIsCancelConfirmOpen(true)}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-red-200 dark:border-red-900/40 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 text-xs font-semibold cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Cancel Run</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* CONFIRM MODALS: Cancel & Reject */}
+      {isCancelConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
+            <h4 className="text-sm font-bold text-[#19143D] dark:text-[#F3F5FA]">
+              Cancel Agent Run?
+            </h4>
+            <p className="text-xs text-[#6E6A8A] dark:text-[#8E95A8]">
+              Are you sure you want to cancel this agent run? Execution will be terminated and marked as Cancelled.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsCancelConfirmOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-[#EAE6FD] dark:border-[#242B3D] text-xs font-semibold text-[#8E95A8]"
+              >
+                Go Back
+              </button>
+              <button
+                onClick={() => {
+                  setIsCancelConfirmOpen(false);
+                  onCancel();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold"
+              >
+                Yes, Cancel Run
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Navigation Tabs */}
-      <div className="flex items-center gap-1 px-5 border-b border-[var(--border-color)] bg-[var(--card-bg)]/40 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab("steps")}
-          className={`py-3 px-3 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === "steps"
-              ? "border-[#8B7CFF] text-[#8B7CFF]"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" />
-          Execution Steps ({run.steps.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab("plan")}
-          className={`py-3 px-3 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === "plan"
-              ? "border-[#8B7CFF] text-[#8B7CFF]"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <HelpCircle className="w-3.5 h-3.5" />
-          Plan & Hypotheses ({run.hypotheses.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab("citations")}
-          className={`py-3 px-3 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === "citations"
-              ? "border-[#8B7CFF] text-[#8B7CFF]"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <Code2 className="w-3.5 h-3.5" />
-          Verified Citations ({run.citations.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab("findings")}
-          className={`py-3 px-3 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === "findings"
-              ? "border-[#8B7CFF] text-[#8B7CFF]"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <ShieldAlert className="w-3.5 h-3.5" />
-          Findings ({run.findings.length})
-        </button>
-
-        <button
-          onClick={() => setActiveTab("approval")}
-          className={`py-3 px-3 text-xs font-medium border-b-2 transition-all flex items-center gap-1.5 ${
-            activeTab === "approval"
-              ? "border-[#8B7CFF] text-[#8B7CFF]"
-              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5" />
-          Proposed Changes & Diff ({run.actions.length})
-        </button>
-      </div>
-
-      {/* Tab Contents */}
-      <div className="flex-1 overflow-y-auto p-5">
-        {/* TAB 1: STEPS TIMELINE */}
-        {activeTab === "steps" && (
-          <div className="flex flex-col gap-4">
-            {run.outcomeSummary && (
-              <div className="p-4 rounded-xl bg-gradient-to-r from-[#8B7CFF]/10 via-[#29D3C2]/10 to-transparent border border-[#8B7CFF]/20 text-xs">
-                <div className="flex items-center gap-2 font-semibold text-[#8B7CFF] mb-1">
-                  <Sparkles className="w-4 h-4" />
-                  Outcome Summary
-                </div>
-                <p className="text-[var(--text-primary)] leading-relaxed">
-                  {run.outcomeSummary}
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {run.steps.map((step, idx) => {
-                const isCurrent = idx === run.currentStepIndex && run.status === "running";
-                return (
-                  <div
-                    key={step.id}
-                    className={`p-4 rounded-xl border transition-all ${
-                      step.status === "completed"
-                        ? "bg-[var(--card-bg)] border-[var(--border-color)]"
-                        : step.status === "running"
-                        ? "bg-[#29D3C2]/5 border-[#29D3C2]/40 shadow-[0_0_15px_-5px_rgba(41,211,194,0.3)]"
-                        : step.status === "awaiting_approval"
-                        ? "bg-red-500/5 border-red-500/30"
-                        : "bg-[var(--card-bg)]/40 border-[var(--border-color)]/60 opacity-70"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-1.5">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-6 h-6 rounded-full bg-[var(--border-color)]/50 text-xs font-mono font-bold flex items-center justify-center text-[var(--text-secondary)]">
-                          {step.order}
-                        </span>
-                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                          {step.title}
-                        </h4>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {step.toolName && (
-                          <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--border-color)]/40 text-[var(--text-secondary)]">
-                            tool: {step.toolName}
-                          </span>
-                        )}
-
-                        {step.status === "completed" && (
-                          <Badge variant="mint" className="text-[10px]">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Completed {step.durationMs ? `(${step.durationMs}ms)` : ""}
-                          </Badge>
-                        )}
-                        {step.status === "running" && (
-                          <Badge variant="cyan" className="text-[10px]">
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            Executing
-                          </Badge>
-                        )}
-                        {step.status === "awaiting_approval" && (
-                          <Badge variant="coral" className="text-[10px]">
-                            <AlertTriangle className="w-3 h-3" />
-                            Approval Gate
-                          </Badge>
-                        )}
-                        {step.status === "pending" && (
-                          <Badge variant="gray" className="text-[10px]">
-                            Pending
-                          </Badge>
-                        )}
-                        {step.status === "failed" && (
-                          <Badge variant="coral" className="text-[10px]">
-                            Failed
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-xs text-[var(--text-secondary)] pl-8 mb-2">
-                      {step.description}
-                    </p>
-
-                    {step.evidenceSummary && (
-                      <div className="ml-8 p-2.5 rounded-lg bg-[var(--border-color)]/20 border border-[var(--border-color)]/40 text-xs font-mono text-[#29D3C2]">
-                        ✓ {step.evidenceSummary}
-                      </div>
-                    )}
-
-                    {step.error && (
-                      <div className="ml-8 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs font-mono text-red-400">
-                        Error: {step.error}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 2: PLAN & HYPOTHESES */}
-        {activeTab === "plan" && (
-          <div className="flex flex-col gap-5">
-            <div className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]/60">
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-2">
-                Execution Plan & Safety Scope
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed mb-3">
-                {run.plan.approach}
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-lg bg-[var(--border-color)]/20 border border-[var(--border-color)]/40">
-                  <span className="font-semibold text-[var(--text-primary)] block mb-1">Risk Assessment:</span>
-                  <span className="text-[var(--text-secondary)]">{run.plan.riskAssessment}</span>
-                </div>
-                <div className="p-3 rounded-lg bg-[var(--border-color)]/20 border border-[var(--border-color)]/40">
-                  <span className="font-semibold text-[var(--text-primary)] block mb-1">Registered Tools Required:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {run.plan.requiredTools.map((t) => (
-                      <span key={t} className="px-2 py-0.5 rounded bg-[var(--border-color)]/50 font-mono text-[11px] text-[var(--text-primary)]">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--text-primary)] mb-3">
-                Ranked Root-Cause Hypotheses ({run.hypotheses.length})
-              </h3>
-              {run.hypotheses.length === 0 ? (
-                <div className="p-6 text-center text-xs text-[var(--text-secondary)] border border-dashed border-[var(--border-color)] rounded-xl">
-                  No hypotheses formulated for this run type.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {run.hypotheses.map((h, i) => (
-                    <div key={h.id} className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-[#8B7CFF]/20 text-[#8B7CFF] text-xs font-mono font-bold flex items-center justify-center">
-                            {i + 1}
-                          </span>
-                          <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                            {h.title}
-                          </h4>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={h.likelihood === "high" ? "coral" : h.likelihood === "medium" ? "sun" : "gray"}>
-                            Likelihood: {h.likelihood}
-                          </Badge>
-                          {h.isConfirmed && (
-                            <Badge variant="mint">
-                              <CheckCircle2 className="w-3 h-3" /> Confirmed
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-[var(--text-secondary)] mb-3">
-                        {h.description}
-                      </p>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs mb-3">
-                        <div className="p-2.5 rounded-lg bg-green-500/5 border border-green-500/20">
-                          <span className="font-semibold text-green-400 block mb-1">Supporting Evidence:</span>
-                          <ul className="list-disc pl-4 space-y-1 text-[var(--text-secondary)]">
-                            {h.evidenceFor.map((e, idx) => (
-                              <li key={idx}>{e}</li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="p-2.5 rounded-lg bg-red-500/5 border border-red-500/20">
-                          <span className="font-semibold text-red-400 block mb-1">Counter Evidence:</span>
-                          <ul className="list-disc pl-4 space-y-1 text-[var(--text-secondary)]">
-                            {h.evidenceAgainst.length > 0 ? (
-                              h.evidenceAgainst.map((e, idx) => <li key={idx}>{e}</li>)
-                            ) : (
-                              <li>None identified</li>
-                            )}
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: VERIFIED CITATIONS */}
-        {activeTab === "citations" && (
-          <div className="flex flex-col gap-4">
-            <div className="text-xs text-[var(--text-secondary)] flex items-center gap-2">
-              <Info className="w-4 h-4 text-[#29D3C2]" />
-              <span>
-                Citations are verified against AST definitions and exact file line bounds in repository <strong>{run.repositoryName}</strong>.
-              </span>
-            </div>
-
-            {run.citations.length === 0 ? (
-              <div className="p-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-[var(--border-color)] rounded-xl">
-                No citations captured yet.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {run.citations.map((c) => (
-                  <div key={c.id} className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]">
-                    <div className="flex items-center justify-between gap-2 mb-2 font-mono text-xs">
-                      <div className="flex items-center gap-2 text-[#29D3C2]">
-                        <Code2 className="w-4 h-4" />
-                        <span className="font-bold">{c.filePath}:{c.startLine}{c.endLine ? `-${c.endLine}` : ""}</span>
-                        {c.symbolName && (
-                          <span className="text-[#8B7CFF]">({c.symbolName})</span>
-                        )}
-                      </div>
-                      {c.isVerified && (
-                        <Badge variant="mint" className="text-[10px]">
-                          ✓ Verified Source Bound
-                        </Badge>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-[var(--text-secondary)] mb-2.5">
-                      {c.reason}
-                    </p>
-
-                    <pre className="p-3 rounded-lg bg-[#070A12] border border-[var(--border-color)] text-[11px] font-mono text-slate-300 overflow-x-auto leading-relaxed">
-                      {c.snippet}
-                    </pre>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: FINDINGS */}
-        {activeTab === "findings" && (
-          <div className="flex flex-col gap-4">
-            {run.findings.length === 0 ? (
-              <div className="p-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-[var(--border-color)] rounded-xl">
-                No code review findings or defects identified for this run.
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {run.findings.map((f) => (
-                  <div key={f.id} className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2">
-                        <Badge variant={f.severity === "critical" ? "coral" : f.severity === "warning" ? "sun" : "cyan"}>
-                          {f.severity.toUpperCase()}
-                        </Badge>
-                        <h4 className="text-sm font-semibold text-[var(--text-primary)]">
-                          {f.title}
-                        </h4>
-                      </div>
-                      <span className="text-xs font-mono text-[var(--text-secondary)]">
-                        {f.file}{f.line ? `:${f.line}` : ""}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-[var(--text-secondary)] mb-2">
-                      {f.description}
-                    </p>
-
-                    {f.codeSnippet && (
-                      <pre className="p-2.5 rounded-lg bg-[#070A12] border border-[var(--border-color)] text-[11px] font-mono text-slate-300 mb-2 overflow-x-auto">
-                        {f.codeSnippet}
-                      </pre>
-                    )}
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                      <div className="p-2 rounded bg-[var(--border-color)]/20 text-[var(--text-secondary)]">
-                        <strong className="text-[var(--text-primary)] block">Why it matters:</strong>
-                        {f.whyItMatters}
-                      </div>
-                      {f.suggestedRemediation && (
-                        <div className="p-2 rounded bg-[#29D3C2]/10 border border-[#29D3C2]/20 text-[#29D3C2]">
-                          <strong className="block">Remediation:</strong>
-                          {f.suggestedRemediation}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 5: PROPOSED CHANGES & DIFF */}
-        {activeTab === "approval" && (
-          <div className="flex flex-col gap-4">
-            {run.actions.length === 0 ? (
-              <div className="p-8 text-center text-xs text-[var(--text-secondary)] border border-dashed border-[var(--border-color)] rounded-xl">
-                No proposed mutating actions or patches for this run.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {run.actions.map((act) => (
-                  <div key={act.id} className="p-4 rounded-xl border border-[var(--border-color)] bg-[var(--card-bg)]">
-                    <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-[var(--text-primary)]">
-                            {act.title}
-                          </span>
-                          <Badge variant={act.status === "approved" ? "mint" : act.status === "rejected" ? "coral" : "sun"}>
-                            {act.status.toUpperCase()}
-                          </Badge>
-                          <Badge variant={act.riskLevel === "high" || act.riskLevel === "critical" ? "coral" : "gray"}>
-                            Risk: {act.riskLevel}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                          {act.description}
-                        </p>
-                      </div>
-
-                      {act.status === "pending" && (
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="accent"
-                            size="sm"
-                            disabled={actionLoading}
-                            onClick={() => handleApprove(act.id)}
-                            className="bg-[#2FD6A0] text-[#070A12] text-xs hover:bg-[#28b889]"
-                          >
-                            Approve Action
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={actionLoading}
-                            onClick={() => {
-                              setSelectedActionId(act.id);
-                              setShowRejectModal(true);
-                            }}
-                            className="text-red-400 border-red-500/30 text-xs"
-                          >
-                            Reject
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="text-xs text-[var(--text-secondary)] mb-2 font-mono">
-                      Affected Files: <strong>{act.affectedFiles.join(", ")}</strong>
-                    </div>
-
-                    {act.diffPreview && (
-                      <div>
-                        <div className="text-xs font-semibold text-[var(--text-primary)] mb-1">
-                          Unified Diff Preview:
-                        </div>
-                        <pre className="p-3 rounded-lg bg-[#070A12] border border-[var(--border-color)] font-mono text-[11px] text-slate-300 overflow-x-auto leading-relaxed">
-                          {act.diffPreview.split("\n").map((line, idx) => {
-                            const isAdd = line.startsWith("+");
-                            const isDel = line.startsWith("-");
-                            return (
-                              <div
-                                key={idx}
-                                className={isAdd ? "text-green-400 bg-green-500/10 px-1 -mx-1" : isDel ? "text-red-400 bg-red-500/10 px-1 -mx-1" : ""}
-                              >
-                                {line}
-                              </div>
-                            );
-                          })}
-                        </pre>
-                      </div>
-                    )}
-
-                    {act.executionOutcome && (
-                      <div className={`mt-3 p-2.5 rounded-lg text-xs font-mono border ${act.executionOutcome.success ? "bg-green-500/10 border-green-500/20 text-green-400" : "bg-red-500/10 border-red-500/20 text-red-400"}`}>
-                        Outcome: {act.executionOutcome.message}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Reject Reason Modal */}
-      {showRejectModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="bg-[var(--card-bg)] border border-[var(--border-color)] rounded-2xl p-5 max-w-md w-full shadow-2xl">
-            <h3 className="text-base font-bold text-[var(--text-primary)] mb-2">
-              Reject Proposed Action
-            </h3>
-            <p className="text-xs text-[var(--text-secondary)] mb-4">
-              Provide feedback on why this action was rejected. The agent will terminate this workflow without modifying any repository files.
+      {isRejectConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="bg-white dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
+            <h4 className="text-sm font-bold text-[#19143D] dark:text-[#F3F5FA]">
+              Reject Proposed Changes?
+            </h4>
+            <p className="text-xs text-[#6E6A8A] dark:text-[#8E95A8]">
+              Rejecting will end this run without modifying any files or creating a Pull Request.
             </p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              placeholder="e.g. Incompatible with upcoming session cookie migration."
-              className="w-full h-24 p-3 rounded-xl bg-[#070A12] border border-[var(--border-color)] text-xs text-[var(--text-primary)] outline-none focus:border-red-400 mb-4"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowRejectModal(false)}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setIsRejectConfirmOpen(false)}
+                className="px-3 py-1.5 rounded-lg border border-[#EAE6FD] dark:border-[#242B3D] text-xs font-semibold text-[#8E95A8]"
               >
-                Cancel
-              </Button>
-              <Button
-                variant="accent"
-                size="sm"
-                disabled={actionLoading}
-                onClick={handleRejectConfirm}
-                className="bg-red-500 text-white hover:bg-red-600 text-xs"
+                Keep Reviewing
+              </button>
+              <button
+                onClick={() => {
+                  setIsRejectConfirmOpen(false);
+                  onReject();
+                }}
+                className="px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold"
               >
-                {actionLoading ? "Rejecting..." : "Confirm Rejection"}
-              </Button>
+                Confirm Reject
+              </button>
             </div>
           </div>
         </div>

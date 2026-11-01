@@ -7,6 +7,8 @@
 
 import { SAMPLE_REPOSITORIES_DATA } from "@/lib/constants";
 import { SAMPLE_PROJECT_TREE, SAMPLE_PROJECT_CODE } from "@/lib/sample-repository-files";
+import { STANDARD_WORKFLOWS, STEP_DEFINITIONS, synthesizeDiff } from "@/lib/demo/agent-engine";
+import { AgentRun, AgentPolicy, WorkflowTemplate } from "@/types/agent";
 
 export interface StoreUser {
   id: string;
@@ -56,6 +58,7 @@ export interface DemoStoreData {
   reviewSessions: Record<string, any>;
   agentRuns: any[];
   agentWorkflows: any[];
+  agentPolicies?: Record<string, any>;
   debugInvestigations: any[];
   debugFollowUps: Record<string, any[]>;
   refactoringProposals: any[];
@@ -72,7 +75,7 @@ export interface DemoStoreData {
   activeWorkspaceId?: string;
 }
 
-const STORE_VERSION = 5;
+const STORE_VERSION = 6;
 
 /**
  * Generates the complete initial seeded dataset across 3 workspaces and 7 repositories.
@@ -705,145 +708,166 @@ export function createInitialData(): DemoStoreData {
     },
   };
 
-  // 6. Developer Agents (6 developer agent descriptors & runs)
-  const agentWorkflows = [
-    {
-      id: "wf_pr_review",
-      name: "Pull Request Code Quality & Security Audit",
-      description: "End-to-end automated PR review verifying security vulnerabilities, performance regressions, and test coverage.",
-      agentType: "code_review",
-      trigger: "pull_request",
+  // 6. Developer Agents (7 workflows, policies, and runs)
+  const agentWorkflows = [...STANDARD_WORKFLOWS];
+
+  const agentPolicies: Record<string, any> = {
+    ws_team_demo: {
+      workspaceId: "ws_team_demo",
+      requireApproval: true,
+      allowedTemplates: [
+        "fix_bug",
+        "unit_tests",
+        "documentation",
+        "security_audit",
+        "upgrade_dependency",
+        "refactor_function",
+        "explain_module",
+      ],
+      maxFilesPerRun: 5,
+      blockedPaths: [".env", "secrets/", ".pem", "id_rsa"],
+      allowDependencyUpgrades: true,
+      updatedAt: timestamp,
     },
-    {
-      id: "wf_debug_root_cause",
-      name: "Autonomous Crash & Stack Trace Investigation",
-      description: "Correlates exception traces with git revisions, extracts AST symbol frames, and formulates ranked hypotheses.",
-      agentType: "debugging",
-      trigger: "manual",
+    ws_default: {
+      workspaceId: "ws_default",
+      requireApproval: true,
+      allowedTemplates: [
+        "fix_bug",
+        "unit_tests",
+        "documentation",
+        "security_audit",
+        "upgrade_dependency",
+        "refactor_function",
+        "explain_module",
+      ],
+      maxFilesPerRun: 5,
+      blockedPaths: [".env", "secrets/"],
+      allowDependencyUpgrades: true,
+      updatedAt: timestamp,
     },
-    {
-      id: "wf_refactor_debt",
-      name: "Technical Debt & Complexity Reduction",
-      description: "Detects high-cyclomatic complexity hotspots and generates validated AST refactoring proposals.",
-      agentType: "refactoring",
-      trigger: "manual",
-    },
-  ];
+  };
 
   const agentRuns = [
     {
       id: "run_101",
-      agentType: "debugging",
-      repositoryId: "sample-project",
       userId: "usr_demo",
+      workspaceId: "ws_team_demo",
+      repositoryId: "sample-project",
+      repositoryName: "sample-project",
+      agentType: "debugging",
+      templateId: "fix_bug",
+      templateName: "Fix a bug from a description/stack trace",
+      taskPrompt: "Investigate TypeError: Cannot read properties of undefined (reading 'token') reported in loginUser",
+      title: "Fix TypeError in loginUser",
+      target: "src/services/auth.ts",
+      stackTrace: "TypeError: Cannot read properties of undefined (reading 'token')\n    at loginUser (src/services/auth.ts:28:19)\n    at handleSubmit (src/components/LoginForm.tsx:28:25)",
+      instructions: "Isolate the root cause and provide a null-safe guard.",
+      requireApproval: true,
+      maxFilesToChange: 1,
       status: "completed",
-      objective: "Investigate TypeError: Cannot read properties of undefined (reading 'token') reported in loginUser",
-      currentStepIndex: 4,
-      totalSteps: 5,
+      currentStepIndex: 6,
+      steps: [
+        { id: "step_plan", order: 1, title: "Plan", description: "Formulate task plan and evaluate dependencies", status: "completed", startedAt: "2026-01-25T10:00:02.000Z", completedAt: "2026-01-25T10:00:04.000Z" },
+        { id: "step_read_files", order: 2, title: "Read relevant files", description: "Inspect targeted repository files, import graphs, and interfaces", status: "completed", startedAt: "2026-01-25T10:00:04.000Z", completedAt: "2026-01-25T10:00:08.000Z" },
+        { id: "step_analyze", order: 3, title: "Analyze", description: "Perform semantic AST checks, invariant validation, and contract matching", status: "completed", startedAt: "2026-01-25T10:00:08.000Z", completedAt: "2026-01-25T10:00:15.000Z" },
+        { id: "step_propose_changes", order: 4, title: "Propose changes (diff)", description: "Synthesize targeted unified diff patch with line-level context", status: "completed", startedAt: "2026-01-25T10:00:15.000Z", completedAt: "2026-01-25T10:00:22.000Z" },
+        { id: "step_self_check", order: 5, title: "Self-check", description: "Verify syntax validity, boundary conditions, and regression safety", status: "completed", startedAt: "2026-01-25T10:00:22.000Z", completedAt: "2026-01-25T10:00:26.000Z" },
+        { id: "step_wait_for_approval", order: 6, title: "Wait for approval", description: "Awaiting human review and explicit authorization gate", isApprovalGate: true, status: "completed", startedAt: "2026-01-25T10:00:26.000Z", completedAt: "2026-01-25T10:01:10.000Z" },
+        { id: "step_apply", order: 7, title: "Apply", description: "Apply approved diff to repository file tree and create Pull Request", status: "completed", startedAt: "2026-01-25T10:01:10.000Z", completedAt: "2026-01-25T10:01:15.000Z" },
+      ],
+      planChecklist: [
+        { id: "p1", text: "Correlate error stack trace with symbol line ranges", done: true },
+        { id: "p2", text: "Trace variable state and null dereference vulnerabilities", done: true },
+        { id: "p3", text: "Construct targeted null-safe guard and error hierarchy", done: true },
+        { id: "p4", text: "Generate regression test asserting graceful failure behavior", done: true },
+      ],
+      diff: synthesizeDiff("fix_bug", "src/services/auth.ts", undefined, ""),
+      logs: [
+        { id: "l1", timestamp: "10:00:02", level: "info", message: "Agent execution initialized for repository 'sample-project'.", stepId: "step_plan" },
+        { id: "l2", timestamp: "10:00:04", level: "info", message: "Parsed 4 stack trace frames. Primary failure point located at src/services/auth.ts:28.", stepId: "step_read_files" },
+        { id: "l3", timestamp: "10:00:08", level: "info", message: "Analyzing session token issuance path. Unchecked access to session.token identified.", stepId: "step_analyze" },
+        { id: "l4", timestamp: "10:00:15", level: "info", message: "Synthesized null-guard patch in src/services/auth.ts.", stepId: "step_propose_changes" },
+        { id: "l5", timestamp: "10:00:22", level: "info", message: "Self-check completed: zero typecheck errors, null guard validated.", stepId: "step_self_check" },
+        { id: "l6", timestamp: "10:01:10", level: "success", message: "Human approval granted by Alex Chen. Applying patch...", stepId: "step_apply" },
+        { id: "l7", timestamp: "10:01:15", level: "success", message: "Run completed successfully. Pull Request #101 registered in Code Review.", stepId: "step_apply" },
+      ],
+      filesTouched: ["src/services/auth.ts"],
+      tokensUsed: 1420,
+      durationSeconds: 48,
+      startedBy: { id: "usr_demo", name: "Alex Chen", email: "alex@codeatlas.dev" },
+      actions: [],
+      findings: [],
+      hypotheses: [],
+      citations: [],
       createdAt: "2026-01-25T10:00:00.000Z",
       updatedAt: "2026-01-25T10:04:30.000Z",
-      steps: [
-        {
-          id: "step-1",
-          order: 1,
-          title: "Parse stack trace and locate frames",
-          description: "Parsed 4 frames from error log. Correlated frames to `src/services/auth.ts:28`.",
-          status: "completed",
-          startedAt: "2026-01-25T10:00:02.000Z",
-          completedAt: "2026-01-25T10:00:15.000Z",
-          toolExecutions: [
-            {
-              toolId: "parse_stack_trace",
-              toolName: "Parse Stack Trace",
-              status: "completed",
-              evidence: "Frame 0 points to loginUser() at line 28 in src/services/auth.ts.",
-            },
-          ],
-        },
-        {
-          id: "step-2",
-          order: 2,
-          title: "Retrieve source context around failure site",
-          description: "Extracted lines 15-45 in `src/services/auth.ts`. Confirmed `session` is dereferenced without a null check.",
-          status: "completed",
-          startedAt: "2026-01-25T10:00:16.000Z",
-          completedAt: "2026-01-25T10:00:45.000Z",
-          toolExecutions: [
-            {
-              toolId: "retrieve_source_context",
-              toolName: "Retrieve Source Context",
-              status: "completed",
-              evidence: "Found unvalidated access: `session.token` when user is disabled.",
-            },
-          ],
-        },
-        {
-          id: "step-3",
-          order: 3,
-          title: "Formulate and rank root-cause hypotheses",
-          description: "Identified unhandled inactive user branch as primary root cause with 95% confidence.",
-          status: "completed",
-          startedAt: "2026-01-25T10:00:46.000Z",
-          completedAt: "2026-01-25T10:02:10.000Z",
-        },
-        {
-          id: "step-4",
-          order: 4,
-          title: "Synthesize targeted reproduction test and fix",
-          description: "Generated test asserting explicit AuthError thrown when inactive user attempts authentication.",
-          status: "completed",
-          startedAt: "2026-01-25T10:02:12.000Z",
-          completedAt: "2026-01-25T10:04:30.000Z",
-        },
-      ],
-      citations: [
-        {
-          file: "src/services/auth.ts",
-          startLine: 18,
-          endLine: 42,
-          symbolName: "loginUser",
-          snippet: "const session = issueToken(user);\nreturn session.token;",
-        },
-      ],
-      hypotheses: [
-        {
-          id: "hyp-main",
-          title: "Missing null guard on session token issuance",
-          explanation: "Inactive or locked accounts cause `issueToken()` to return null without throwing an explicit error.",
-          likelihood: "high",
-          confidenceScore: 0.95,
-        },
-      ],
-      findings: [
-        {
-          id: "find-1",
-          title: "Unchecked dereference of session object",
-          description: "Line 28 unconditionally accesses `session.token`.",
-          severity: "critical",
-          file: "src/services/auth.ts",
-          line: 28,
-          suggestedFix: "if (!session) throw new AuthError('Unable to issue session for inactive user');",
-        },
-      ],
+      completedAt: "2026-01-25T10:04:30.000Z",
     },
     {
       id: "run_102",
-      agentType: "code_review",
-      repositoryId: "sample-project",
       userId: "usr_demo",
-      status: "completed",
-      objective: "Perform full correctness and security review of Pull Request #101 (WebAuthn)",
-      currentStepIndex: 3,
-      totalSteps: 3,
+      workspaceId: "ws_team_demo",
+      repositoryId: "sample-project",
+      repositoryName: "sample-project",
+      agentType: "test_generation",
+      templateId: "unit_tests",
+      templateName: "Write unit tests for a file",
+      taskPrompt: "Write unit tests for src/services/auth.ts",
+      title: "Unit Tests for src/services/auth.ts",
+      target: "src/services/auth.ts",
+      instructions: "Generate comprehensive Vitest unit test suite covering happy paths and edge cases.",
+      requireApproval: true,
+      maxFilesToChange: 1,
+      status: "awaiting_approval",
+      currentStepIndex: 5,
+      steps: [
+        { id: "step_plan", order: 1, title: "Plan", description: "Formulate task plan and evaluate dependencies", status: "completed", startedAt: "2026-01-26T14:00:02.000Z", completedAt: "2026-01-26T14:00:05.000Z" },
+        { id: "step_read_files", order: 2, title: "Read relevant files", description: "Inspect targeted repository files, import graphs, and interfaces", status: "completed", startedAt: "2026-01-26T14:00:05.000Z", completedAt: "2026-01-26T14:00:10.000Z" },
+        { id: "step_analyze", order: 3, title: "Analyze", description: "Perform semantic AST checks, invariant validation, and contract matching", status: "completed", startedAt: "2026-01-26T14:00:10.000Z", completedAt: "2026-01-26T14:00:18.000Z" },
+        { id: "step_propose_changes", order: 4, title: "Propose changes (diff)", description: "Synthesize targeted unified diff patch with line-level context", status: "completed", startedAt: "2026-01-26T14:00:18.000Z", completedAt: "2026-01-26T14:00:28.000Z" },
+        { id: "step_self_check", order: 5, title: "Self-check", description: "Verify syntax validity, boundary conditions, and regression safety", status: "completed", startedAt: "2026-01-26T14:00:28.000Z", completedAt: "2026-01-26T14:00:33.000Z" },
+        { id: "step_wait_for_approval", order: 6, title: "Wait for approval", description: "Awaiting human review and explicit authorization gate", isApprovalGate: true, status: "waiting", startedAt: "2026-01-26T14:00:33.000Z" },
+        { id: "step_apply", order: 7, title: "Apply", description: "Apply approved diff to repository file tree and create Pull Request", status: "pending" },
+      ],
+      planChecklist: [
+        { id: "p1", text: "Analyze exported interface and symbol declarations in src/services/auth.ts", done: true },
+        { id: "p2", text: "Identify critical happy paths and authentication ceremonies", done: true },
+        { id: "p3", text: "Isolate edge cases: missing credentials, malformed tokens, inactive accounts", done: true },
+        { id: "p4", text: "Synthesize isolated unit tests with zero network side effects", done: true },
+        { id: "p5", text: "Validate assertion coverage and syntax correctness", done: true },
+      ],
+      diff: synthesizeDiff("unit_tests", "src/services/auth.ts", undefined, ""),
+      logs: [
+        { id: "l1", timestamp: "14:00:02", level: "info", message: "Agent execution initialized for repository 'sample-project'.", stepId: "step_plan" },
+        { id: "l2", timestamp: "14:00:05", level: "info", message: "Read src/services/auth.ts (42 lines, 3 symbols).", stepId: "step_read_files" },
+        { id: "l3", timestamp: "14:00:10", level: "info", message: "Identified test targets: loginUser(), validateEmail(), issueSession().", stepId: "step_analyze" },
+        { id: "l4", timestamp: "14:00:18", level: "info", message: "Synthesized Vitest unit test suite (42 additions).", stepId: "step_propose_changes" },
+        { id: "l5", timestamp: "14:00:28", level: "info", message: "Self-check passed: 0 syntax issues, 5/5 assertions verified.", stepId: "step_self_check" },
+        { id: "l6", timestamp: "14:00:33", level: "warn", message: "Execution paused: Awaiting developer review and approval to apply changes.", stepId: "step_wait_for_approval" },
+      ],
+      filesTouched: ["tests/auth.test.ts"],
+      tokensUsed: 2150,
+      durationSeconds: 35,
+      startedBy: { id: "usr_demo", name: "Alex Chen", email: "alex@codeatlas.dev" },
+      actions: [
+        {
+          id: "act_102",
+          actionType: "apply_patch",
+          title: "Create unit test suite for auth service",
+          description: "Generates tests/auth.test.ts testing authentication ceremonies and edge cases",
+          rationale: "Ensures regression resilience and verifies token validation behavior",
+          affectedFiles: ["tests/auth.test.ts"],
+          status: "pending",
+          riskLevel: "low",
+          createdAt: "2026-01-26T14:00:33.000Z",
+        },
+      ],
+      findings: [],
+      hypotheses: [],
+      citations: [],
       createdAt: "2026-01-26T14:00:00.000Z",
       updatedAt: "2026-01-26T14:03:15.000Z",
-      steps: [
-        { id: "s-101", order: 1, title: "Review changed diffs", status: "completed" },
-        { id: "s-102", order: 2, title: "Execute static security rules", status: "completed" },
-        { id: "s-103", order: 3, title: "Publish summary findings", status: "completed" },
-      ],
-      citations: [],
-      findings: [],
     },
   ];
 
@@ -1328,6 +1352,7 @@ export function createInitialData(): DemoStoreData {
     reviewSessions,
     agentRuns,
     agentWorkflows,
+    agentPolicies,
     debugInvestigations,
     debugFollowUps: {},
     refactoringProposals,
@@ -2201,4 +2226,228 @@ export function cacheMultiRepoAnalysis(analysis: any): void {
 export function getCachedMultiRepoAnalysis(): any {
   const store = getStore();
   return store.multiRepoAnalysis || null;
+}
+
+// ---------------------------------------------------------------------------
+// AI AGENT WORKSPACE STORE HELPERS
+// ---------------------------------------------------------------------------
+
+export function getAgentRuns(): AgentRun[] {
+  const store = getStore();
+  return store.agentRuns ? [...store.agentRuns] : [];
+}
+
+export function getAgentRun(id: string): AgentRun | null {
+  const store = getStore();
+  return (store.agentRuns || []).find((r: AgentRun) => r.id === id) || null;
+}
+
+export function addAgentRun(run: AgentRun): void {
+  const store = getStore();
+  if (!store.agentRuns) store.agentRuns = [];
+  store.agentRuns.unshift(run);
+
+  logActivity({
+    type: "agent_run",
+    title: `Launched Agent Run: ${run.title || run.taskPrompt}`,
+    description: `Workflow '${run.templateName || run.templateId}' initiated on ${run.repositoryName || run.repositoryId}.`,
+    status: "info",
+    href: `/agents?id=${run.id}`,
+    linkText: "View Agent Run",
+  });
+
+  saveStore(store);
+}
+
+export function updateAgentRun(runId: string, updates: Partial<AgentRun>): void {
+  const store = getStore();
+  if (!store.agentRuns) return;
+  const idx = store.agentRuns.findIndex((r: AgentRun) => r.id === runId);
+  if (idx !== -1) {
+    store.agentRuns[idx] = {
+      ...store.agentRuns[idx],
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+    saveStore(store);
+  }
+}
+
+export function deleteAgentRun(runId: string): void {
+  const store = getStore();
+  if (!store.agentRuns) return;
+  store.agentRuns = store.agentRuns.filter((r: AgentRun) => r.id !== runId);
+  saveStore(store);
+}
+
+export function getAgentWorkflows(): WorkflowTemplate[] {
+  const store = getStore();
+  return store.agentWorkflows || STANDARD_WORKFLOWS;
+}
+
+export function saveCustomWorkflow(workflow: WorkflowTemplate): void {
+  const store = getStore();
+  if (!store.agentWorkflows) store.agentWorkflows = [...STANDARD_WORKFLOWS];
+  const idx = store.agentWorkflows.findIndex((w: any) => w.id === workflow.id);
+  if (idx !== -1) {
+    store.agentWorkflows[idx] = workflow;
+  } else {
+    store.agentWorkflows.push(workflow);
+  }
+
+  logActivity({
+    type: "workflow_created",
+    title: `Custom Workflow created: ${workflow.name}`,
+    description: `Saved customized agent workflow with ${workflow.typicalSteps?.length || 7} pipeline steps.`,
+    status: "success",
+    href: "/agents",
+  });
+
+  saveStore(store);
+}
+
+export function getAgentPolicy(workspaceId: string = "ws_team_demo"): AgentPolicy {
+  const store = getStore();
+  const existing = store.agentPolicies?.[workspaceId];
+  if (existing) return existing;
+
+  return {
+    workspaceId,
+    requireApproval: true,
+    allowedTemplates: [
+      "fix_bug",
+      "unit_tests",
+      "documentation",
+      "security_audit",
+      "upgrade_dependency",
+      "refactor_function",
+      "explain_module",
+    ],
+    maxFilesPerRun: 5,
+    blockedPaths: [".env", "secrets/", ".pem", "id_rsa"],
+    allowDependencyUpgrades: true,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export function saveAgentPolicy(workspaceId: string, policy: Partial<AgentPolicy>): void {
+  const store = getStore();
+  if (!store.agentPolicies) store.agentPolicies = {};
+
+  const current = getAgentPolicy(workspaceId);
+  const updated: AgentPolicy = {
+    ...current,
+    ...policy,
+    workspaceId,
+    updatedAt: new Date().toISOString(),
+  };
+
+  store.agentPolicies[workspaceId] = updated;
+
+  logActivity({
+    type: "policy_updated",
+    title: `Agent Safety Policy updated for ${workspaceId}`,
+    description: `Enforcing requireApproval=${updated.requireApproval}, maxFiles=${updated.maxFilesPerRun}, blockedPaths=[${updated.blockedPaths.join(", ")}].`,
+    status: "info",
+    href: "/agents",
+  });
+
+  saveStore(store);
+}
+
+export function applyAgentDiffToStore(run: AgentRun): void {
+  const store = getStore();
+  if (!run.diff) return;
+
+  const repoId = run.repositoryId;
+  const filePath = run.diff.file;
+  const newCode = run.diff.newContent;
+
+  // 1. Update repo file
+  if (!store.repositoryFiles) store.repositoryFiles = {};
+  if (!store.repositoryFiles[repoId]) store.repositoryFiles[repoId] = {};
+  store.repositoryFiles[repoId][filePath] = {
+    code: newCode,
+    language: filePath.endsWith(".json")
+      ? "json"
+      : filePath.endsWith(".py")
+      ? "python"
+      : filePath.endsWith(".go")
+      ? "go"
+      : "typescript",
+  };
+
+  // 2. Create Pull Request
+  if (!store.pullRequests) store.pullRequests = [];
+  const prNumber = store.pullRequests.length + 101;
+  const prId = `pr_agent_${Date.now()}`;
+
+  const newPr = {
+    id: prId,
+    number: prNumber,
+    title: `[Agent] ${run.title || run.taskPrompt}`,
+    body: `### Automated Engineering Changes\nGenerated by CodeAtlas AI Agent (${run.templateName || run.agentType}).\n\n**Instructions:**\n${run.instructions || run.taskPrompt}\n\n**Summary:**\n- Target file: \`${filePath}\`\n- Additions: +${run.diff.additions}\n- Deletions: -${run.diff.deletions}\n- Safety policy verified.`,
+    author: {
+      name: run.startedBy?.name || "Alex Chen",
+      avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+    },
+    baseBranch: "main",
+    headBranch: `agent/${run.templateId || "fix"}-${Date.now().toString(36)}`,
+    baseSha: "30e6d94e",
+    headSha: "a8f7b2c1",
+    state: "open",
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    additions: run.diff.additions,
+    deletions: run.diff.deletions,
+    changedFilesCount: 1,
+    files: [
+      {
+        filename: filePath,
+        status: "modified",
+        additions: run.diff.additions,
+        deletions: run.diff.deletions,
+        changes: run.diff.additions + run.diff.deletions,
+        patch: run.diff.patch,
+      },
+    ],
+  };
+
+  store.pullRequests.unshift(newPr);
+
+  // 3. Mark run completed with PR link
+  if (store.agentRuns) {
+    const rIdx = store.agentRuns.findIndex((r: AgentRun) => r.id === run.id);
+    if (rIdx !== -1) {
+      store.agentRuns[rIdx].status = "completed";
+      store.agentRuns[rIdx].completedAt = new Date().toISOString();
+      store.agentRuns[rIdx].pullRequestId = prId;
+      if (store.agentRuns[rIdx].steps?.[6]) {
+        store.agentRuns[rIdx].steps[6].status = "completed";
+        store.agentRuns[rIdx].steps[6].completedAt = new Date().toISOString();
+      }
+    }
+  }
+
+  // 4. Activity & Notification
+  logActivity({
+    type: "pr_created",
+    title: `Pull Request #${prNumber} opened from Agent: ${run.title || run.taskPrompt}`,
+    description: `Applied approved patch to ${filePath} in ${repoId}.`,
+    status: "success",
+    href: "/code-review",
+    linkText: "View Pull Request",
+  });
+
+  if (!store.notifications) store.notifications = [];
+  store.notifications.unshift({
+    id: `notif_${Date.now()}`,
+    title: `Agent Run Completed: ${run.title || run.taskPrompt}`,
+    message: `Patch approved and applied. Pull Request #${prNumber} is ready for review in Code Review.`,
+    timestamp: new Date().toISOString(),
+    read: false,
+    type: "agent_run",
+  });
+
+  saveStore(store);
 }

@@ -65,7 +65,8 @@ export function FindingsList({
 
   // Filter findings
   const queryLower = searchQuery.toLowerCase().trim();
-  const filteredFindings = findings.filter((f) => {
+  const safeFindings = findings || [];
+  const filteredFindings = safeFindings.filter((f) => {
     const matchesSev = severityFilter === "all" || f.severity === severityFilter;
     const matchesCat = categoryFilter === "all" || f.category === categoryFilter;
     const matchesQ =

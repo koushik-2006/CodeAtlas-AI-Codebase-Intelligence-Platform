@@ -26,7 +26,8 @@ export type StepStatus =
   | "completed"
   | "failed"
   | "skipped"
-  | "awaiting_approval";
+  | "awaiting_approval"
+  | "waiting";
 
 export type ActionType =
   | "apply_patch"
@@ -79,25 +80,28 @@ export interface AgentPlan {
 
 export interface AgentCitation {
   id: string;
-  repositoryId: string;
+  repositoryId?: string;
   filePath: string;
+  file?: string;
   symbolName?: string;
   startLine: number;
   endLine?: number;
   snippet: string;
-  reason: string;
-  isVerified: boolean;
+  reason?: string;
+  isVerified?: boolean;
 }
 
 export interface AgentHypothesis {
   id: string;
   title: string;
-  description: string;
+  description?: string;
+  explanation?: string;
   likelihood: "high" | "medium" | "low";
-  evidenceFor: string[];
-  evidenceAgainst: string[];
-  verificationSteps: string[];
-  isConfirmed: boolean;
+  evidenceFor?: string[];
+  evidenceAgainst?: string[];
+  verificationSteps?: string[];
+  confidenceScore?: number;
+  isConfirmed?: boolean;
 }
 
 export interface ApprovalAction {
@@ -132,8 +136,49 @@ export interface AgentFinding {
   line?: number;
   lineRange?: string;
   codeSnippet?: string;
-  whyItMatters: string;
+  whyItMatters?: string;
+  suggestedFix?: string;
   suggestedRemediation?: string;
+}
+
+export interface AgentLogLine {
+  id: string;
+  timestamp: string;
+  level: "info" | "warn" | "error" | "success" | "debug";
+  message: string;
+  stepId?: string;
+}
+
+export interface AgentDiff {
+  file: string;
+  originalContent: string;
+  newContent: string;
+  patch: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface AgentPolicy {
+  workspaceId: string;
+  requireApproval: boolean;
+  allowedTemplates: string[];
+  maxFilesPerRun: number;
+  blockedPaths: string[];
+  allowDependencyUpgrades: boolean;
+  updatedAt: string;
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  agentType: AgentType;
+  description: string;
+  defaultPrompt: string;
+  stepCount: number;
+  steps: string[];
+  typicalSteps?: string[];
+  isCustom?: boolean;
+  icon?: string;
 }
 
 export interface AgentRun {
@@ -144,11 +189,30 @@ export interface AgentRun {
   repositoryName: string;
   agentType: AgentType;
   workflowType?: string;
+  templateId?: string;
+  templateName?: string;
   taskPrompt: string;
+  title?: string;
+  target?: string;
+  stackTrace?: string;
+  instructions?: string;
+  requireApproval?: boolean;
+  maxFilesToChange?: number;
   status: AgentRunStatus;
-  plan: AgentPlan;
+  plan?: AgentPlan;
+  planChecklist?: Array<{ id: string; text: string; done: boolean }>;
   steps: AgentStep[];
   currentStepIndex: number;
+  logs?: AgentLogLine[];
+  filesTouched?: string[];
+  diff?: AgentDiff;
+  tokensUsed?: number;
+  durationSeconds?: number;
+  startedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
   findings: AgentFinding[];
   hypotheses: AgentHypothesis[];
   citations: AgentCitation[];
@@ -158,6 +222,8 @@ export interface AgentRun {
   updatedAt: string;
   completedAt?: string;
   errorDetails?: string;
+  pullRequestId?: string;
+  pausedStepIndex?: number;
   isSimulated?: boolean;
 }
 
@@ -171,23 +237,20 @@ export interface AgentToolDefinition {
   timeoutMs: number;
 }
 
-export interface WorkflowTemplate {
-  id: string;
-  name: string;
-  agentType: AgentType;
-  description: string;
-  defaultPrompt: string;
-  stepCount: number;
-  steps: string[];
-}
-
 export interface StartAgentRunRequest {
   agentType: AgentType;
   repositoryId: string;
   taskPrompt: string;
   workflowType?: string;
+  templateId?: string;
+  templateName?: string;
+  target?: string;
+  stackTrace?: string;
+  instructions?: string;
   workspaceId?: string;
   options?: {
+    requireApproval?: boolean;
+    maxFilesToChange?: number;
     autoApproveReadOnly?: boolean;
     preferredDetail?: "concise" | "detailed";
   };
