@@ -34,11 +34,10 @@ export const MAIN_NAVIGATION: NavigationItem[] = [
   { name: "AI Assistant", href: "/assistant", icon: Sparkles },
   { name: "AI Debugger", href: "/debug", icon: Bug, badge: "New" },
   { name: "Refactoring & Debt", href: "/refactoring", icon: Wrench, badge: "AI" },
-  { name: "Architecture Graph", href: "/architecture", altHref: "/city-map", icon: Network },
+  { name: "Architecture Graph", href: "/architecture", icon: Network },
   { name: "Change Impact", href: "/change-impact", altHref: "/impact", icon: GitCompare },
   { name: "Code Review", href: "/code-review", icon: GitPullRequest, badge: "AI" },
   { name: "Recent Activity", href: "/activity", icon: History },
   { name: "System Health & Ops", href: "/system-health", altHref: "/operations", icon: Activity, badge: "SRE" },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
-

@@ -1,7 +1,7 @@
 "use client";
 
-import VisualCodeExplorerPage from "../visual-code-explorer/page";
+import { VisualExplorerView } from "@/components/explorer/VisualExplorerView";
 
-export default function VisualExplorerAliasPage() {
-  return <VisualCodeExplorerPage />;
+export default function VisualExplorerPage() {
+  return <VisualExplorerView defaultTab="codelens" />;
 }

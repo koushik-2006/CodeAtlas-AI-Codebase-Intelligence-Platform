@@ -1,5 +1,7 @@
-import ArchitecturePage from "../architecture/page";
+"use client";
+
+import { VisualExplorerView } from "@/components/explorer/VisualExplorerView";
 
 export default function CityMapPage() {
-  return <ArchitecturePage />;
+  return <VisualExplorerView defaultTab="city" />;
 }

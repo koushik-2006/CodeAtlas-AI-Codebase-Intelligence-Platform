@@ -73,6 +73,21 @@ export interface DemoStoreData {
   traces: any[];
   multiRepoAnalysis?: any;
   activeWorkspaceId?: string;
+  explorerHistory?: CodeAnalysisHistoryItem[];
+}
+
+export interface CodeAnalysisHistoryItem {
+  id: string;
+  title: string;
+  timestamp: string;
+  inputPreview: string;
+  code: string;
+  language: string;
+  mode: string;
+  targetLanguage?: string;
+  resultMarkdown: string;
+  mermaidChart?: string | null;
+  repositoryId?: string;
 }
 
 const STORE_VERSION = 6;
@@ -1398,6 +1413,30 @@ export function createInitialData(): DemoStoreData {
         services: ["web-gateway", "ast-resolver", "cache-service"],
       },
     ],
+    explorerHistory: [
+      {
+        id: "hist_sample_1",
+        title: "Bug Audit: calculateUserDiscounts",
+        timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
+        inputPreview: "export function calculateUserDiscounts(cart: ...",
+        code: "export function calculateUserDiscounts(cart: { items: any[]; couponCode?: string; user: any }) {\n  let total = 0;\n  for (let i = 0; i <= cart.items.length; i++) {\n    total += cart.items[i].price * cart.items[i].quantity;\n  }\n  return total;\n}",
+        language: "typescript",
+        mode: "find-bugs",
+        resultMarkdown: "### 🐛 Bug Audit (3 Issues Identified)\n- Line 9: Off-by-one boundary (<= instead of <)\n- Line 15: Unchecked null dereference\n- Line 20: Negative balance on coupon subtraction",
+        repositoryId: "sample-project",
+      },
+      {
+        id: "hist_sample_2",
+        title: "Explain Simply: loginUser",
+        timestamp: new Date(Date.now() - 3600000 * 24).toISOString(),
+        inputPreview: "export async function loginUser(email: string...",
+        code: "export async function loginUser(email: string, password: string): Promise<AuthResult> {\n  const user = await db.users.findUnique({ where: { email } });\n  return { token: createToken(user.id), user };\n}",
+        language: "typescript",
+        mode: "explain",
+        resultMarkdown: "### 💡 High-Level Overview\nValidates incoming user email and password against stored database credentials and returns a signed session token.",
+        repositoryId: "sample-project",
+      },
+    ],
   };
 }
 
@@ -2449,5 +2488,67 @@ export function applyAgentDiffToStore(run: AgentRun): void {
     type: "agent_run",
   });
 
+  saveStore(store);
+}
+
+// ---------------------------------------------------------------------------
+// Visual Code Explorer History Helpers
+// ---------------------------------------------------------------------------
+
+export function getExplorerHistory(): CodeAnalysisHistoryItem[] {
+  const store = getStore();
+  return store.explorerHistory || [];
+}
+
+export function addExplorerHistoryItem(
+  item: Omit<CodeAnalysisHistoryItem, "id" | "timestamp">
+): CodeAnalysisHistoryItem {
+  const store = getStore();
+  if (!store.explorerHistory) store.explorerHistory = [];
+
+  const newItem: CodeAnalysisHistoryItem = {
+    ...item,
+    id: `hist_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    timestamp: new Date().toISOString(),
+  };
+
+  store.explorerHistory.unshift(newItem);
+
+  if (store.explorerHistory.length > 40) {
+    store.explorerHistory = store.explorerHistory.slice(0, 40);
+  }
+
+  saveStore(store);
+  return newItem;
+}
+
+export function updateExplorerHistoryItem(
+  id: string,
+  updates: Partial<CodeAnalysisHistoryItem>
+): void {
+  const store = getStore();
+  if (!store.explorerHistory) return;
+
+  const idx = store.explorerHistory.findIndex((h) => h.id === id);
+  if (idx !== -1) {
+    store.explorerHistory[idx] = {
+      ...store.explorerHistory[idx],
+      ...updates,
+    };
+    saveStore(store);
+  }
+}
+
+export function deleteExplorerHistoryItem(id: string): void {
+  const store = getStore();
+  if (!store.explorerHistory) return;
+
+  store.explorerHistory = store.explorerHistory.filter((h) => h.id !== id);
+  saveStore(store);
+}
+
+export function clearExplorerHistory(): void {
+  const store = getStore();
+  store.explorerHistory = [];
   saveStore(store);
 }

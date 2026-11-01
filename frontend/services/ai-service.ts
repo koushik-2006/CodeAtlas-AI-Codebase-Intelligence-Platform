@@ -19,7 +19,9 @@ export type CodeAnalysisMode =
   | "optimize"
   | "add-comments"
   | "convert"
-  | "generate-tests";
+  | "generate-tests"
+  | "complexity"
+  | "security";
 
 export interface AIErrorDetails {
   type: "app_check_error" | "quota_error" | "network_error" | "not_configured" | "unknown";
@@ -250,6 +252,14 @@ class AIService {
         prompt = `Generate a comprehensive suite of unit tests for this ${language} code (e.g. using Jest, Vitest, Pytest, or standard testing harness). Include:\n- Happy path tests\n- Edge cases (null/empty inputs, boundary conditions)\n- Error handling assertions\n\n\`\`\`${language}\n${code}\n\`\`\``;
         break;
 
+      case "complexity":
+        prompt = `Perform an algorithmic complexity and maintainability analysis on this ${language} code:\n1. Calculate exact Time and Space Complexity (Big-O)\n2. Estimate Cyclomatic Complexity and Cognitive Complexity\n3. Provide Halstead metrics overview\n4. Recommend simplification refactors if complexity exceeds thresholds\n\n\`\`\`${language}\n${code}\n\`\`\``;
+        break;
+
+      case "security":
+        prompt = `Perform an OWASP and CWE security taint audit on this ${language} code:\n1. Check for injection flaws, input sanitization gaps, and boundary overflows\n2. Map findings to CWE numbers and OWASP Top 10 categories\n3. Verify null pointer / memory safety\n4. Provide specific hardening code recommendations\n\n\`\`\`${language}\n${code}\n\`\`\``;
+        break;
+
       default:
         prompt = `Analyze the following ${language} code:\n\n\`\`\`${language}\n${code}\n\`\`\``;
     }
@@ -272,6 +282,35 @@ class AIService {
   /**
    * Generates a valid Mermaid.js flowchart diagram representing the control flow of code.
    */
+  /**
+   * Generates a valid Mermaid.js sequence diagram showing function calls and message flow.
+   */
+  async generateMermaidSequenceDiagram(code: string, language: string): Promise<string> {
+    const systemInstruction =
+      "You are a sequence diagram generator. Generate a clean, valid Mermaid.js sequenceDiagram representing callers, handlers, services, and storage interactions. Output ONLY the raw Mermaid diagram code inside a ```mermaid fence. No other text or markdown.";
+
+    const prompt = `Generate a Mermaid.js sequenceDiagram for this ${language} code:\n\`\`\`${language}\n${code}\n\`\`\``;
+
+    try {
+      const model = getCodeAtlasModel(systemInstruction);
+      if (!model) throw new Error("Unable to initialize Gemini model.");
+
+      const res = await model.generateContent(prompt);
+      const text = res.response.text();
+
+      const match = text.match(/```(?:mermaid)?([\s\S]*?)```/i);
+      let diagram = match ? match[1].trim() : text.trim();
+
+      if (!diagram.startsWith("sequenceDiagram")) {
+        diagram = `sequenceDiagram\n${diagram}`;
+      }
+
+      return diagram;
+    } catch {
+      return `sequenceDiagram\n  autonumber\n  actor Client as Client / Caller\n  participant Handler as ${language} Entry\n  participant Engine as Core Logic\n  participant Store as Persistence Tier\n  Client->>Handler: Inbound Invocation\n  Handler->>Engine: Process Payload\n  Engine->>Store: Query / Mutate Record\n  Store-->>Engine: Acknowledge Data\n  Engine-->>Handler: Return Value\n  Handler-->>Client: 200 OK / Success Output`;
+    }
+  }
+
   async generateMermaidFlowchart(code: string, language: string): Promise<string> {
     const systemInstruction =
       "You are a diagram generator. Generate a clean, valid Mermaid.js flowchart diagram (flowchart TD or graph TD) representing the code execution path, decisions, branches, and returns. Output ONLY the raw Mermaid diagram code inside a ```mermaid fence. No other text or markdown.";
