@@ -8,9 +8,20 @@ export type QualityFindingCategory =
   | "circular_dependency"
   | "unused_symbol"
   | "missing_error_handling"
-  | "inconsistent_patterns";
+  | "inconsistent_patterns"
+  | "large_file"
+  | "too_many_parameters"
+  | "missing_test";
 
-export type QualityFindingSeverity = "critical" | "warning" | "info";
+export type QualityFindingSeverity =
+  | "critical"
+  | "warning"
+  | "info"
+  | "high"
+  | "medium"
+  | "low";
+
+export type FindingStatus = "open" | "ignored" | "fixed";
 
 export type DetectionMethod =
   | "ast_metric"
@@ -26,14 +37,22 @@ export type RefactoringOperationType =
   | "reduce_duplication"
   | "improve_error_handling"
   | "separate_responsibilities"
-  | "improve_type_clarity";
+  | "improve_type_clarity"
+  | "improve_naming"
+  | "split_file"
+  | "custom";
 
 export interface CodeQualityFinding {
   id: string;
+  repositoryId?: string;
+  repositoryName?: string;
   title: string;
-  category: QualityFindingCategory;
+  category: QualityFindingCategory | string;
   categoryLabel: string;
   severity: QualityFindingSeverity;
+  status?: FindingStatus;
+  ignoreReason?: string;
+  effortHours?: number;
   filePath: string;
   symbolName?: string;
   lineRange?: { start: number; end: number };
@@ -45,6 +64,7 @@ export interface CodeQualityFinding {
   impactRationale: string;
   suggestedAction: string;
   suggestedRefactoringOp?: RefactoringOperationType;
+  codeSnippet?: string;
 }
 
 export interface ComplexityHotspot {
@@ -55,6 +75,7 @@ export interface ComplexityHotspot {
   lineCount: number;
   nestingDepth: number;
   rationale: string;
+  repositoryId?: string;
 }
 
 export interface ModuleCouplingMetric {
@@ -87,19 +108,69 @@ export interface DuplicateCodeCandidate {
   suggestedConsolidation: string;
 }
 
+export interface TopFileToFix {
+  filePath: string;
+  repositoryId: string;
+  repositoryName?: string;
+  findingCount: number;
+  totalEffortHours: number;
+  accumulatedDebtScore: number;
+  primarySeverity: QualityFindingSeverity;
+  reason: string;
+  recommendedOp?: RefactoringOperationType;
+}
+
+export interface HistoricalScanSnapshot {
+  id: string;
+  timestamp: string;
+  dateLabel: string;
+  score: number;
+  findingsCount: number;
+  effortHours: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+}
+
+export interface PerRepoDebtSummary {
+  repositoryId: string;
+  repositoryName: string;
+  score: number;
+  grade: "A" | "B" | "C" | "D" | "F";
+  findingsCount: number;
+  effortHours: number;
+  criticalCount: number;
+  warningCount: number;
+  trend: number; // positive = improved (+2), negative = degraded (-3)
+}
+
+export interface CategoryDistribution {
+  category: string;
+  label: string;
+  count: number;
+  severity: QualityFindingSeverity;
+  percentage: number;
+}
+
 export interface TechnicalDebtOverview {
   repositoryId: string;
   repositoryName: string;
   revision: string;
   compositeScore: number; // 0-100 (100 = pristine, lower = higher debt)
+  overallScore?: number;
   debtRating: "A" | "B" | "C" | "D" | "F";
+  grade?: string;
   scoreFormula: string;
+  totalDebtHours?: number;
   findingsCount: {
     critical: number;
     warning: number;
     info: number;
+    low?: number;
     total: number;
   };
+  categories?: CategoryDistribution[];
+  topFilesToFix?: TopFileToFix[];
+  historicalScans?: HistoricalScanSnapshot[];
+  perRepoDebt?: PerRepoDebtSummary[];
   hotspots: ComplexityHotspot[];
   couplingMetrics: ModuleCouplingMetric[];
   circularDependencies: CircularDependencyFinding[];
@@ -124,6 +195,14 @@ export interface RefactoringImpactReport {
   limitationsNote: string;
 }
 
+export interface BeforeAfterMetrics {
+  linesBefore: number;
+  linesAfter: number;
+  complexityBefore: number;
+  complexityAfter: number;
+  effortReductionHours?: number;
+}
+
 export interface DbRefactoringProposal {
   id: string;
   userId: string;
@@ -133,25 +212,35 @@ export interface DbRefactoringProposal {
   sourceRevision: string;
   title: string;
   operation: RefactoringOperationType;
+  operationType?: RefactoringOperationType;
   targetFile: string;
+  filePath?: string;
   targetSymbol?: string;
+  symbolName?: string;
   lineRange: { start: number; end: number };
   purpose: string;
+  rationale?: string;
   expectedBenefits: string[];
   potentialRisks: string[];
   unverifiedAssumptions: string[];
+  stepList?: string[];
   originalSnippet: string;
   proposedSnippet: string;
   patchDiff: string;
-  status: "draft" | "proposed" | "accepted" | "rejected" | "applied";
+  diff?: string;
+  beforeAfterMetrics?: BeforeAfterMetrics;
+  status: "draft" | "proposed" | "accepted" | "rejected" | "applied" | "open" | "pending";
   validationStatus: "validated" | "syntax_error" | "stale_revision" | "unverified";
   validationResults: ValidationCheckResult[];
   impactReport: RefactoringImpactReport;
   suggestedLocalChecks: string[];
   isApplied: boolean;
   appliedAt?: string;
+  pullRequestId?: string;
+  pullRequestNumber?: number;
   backupContent?: string;
   isStaleRevision?: boolean;
+  relatedFindingId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -161,8 +250,11 @@ export interface SymbolRenameReference {
   line: number;
   column?: number;
   contextSnippet: string;
+  beforeLine?: string;
+  afterLine?: string;
   isResolvedAstReference: boolean;
   isAmbiguous: boolean;
+  checked?: boolean;
 }
 
 export interface RenameSymbolPreview {
@@ -187,6 +279,7 @@ export interface ProposeRefactoringRequest {
   operation: RefactoringOperationType;
   customInstructions?: string;
   revision?: string;
+  findingId?: string;
 }
 
 export interface ApplyRefactoringRequest {
@@ -204,4 +297,22 @@ export interface RenamePreviewRequest {
   filePath: string;
   symbolName: string;
   newSymbolName: string;
+}
+
+export type RefactoringHistoryType = "scan" | "proposal" | "rename";
+
+export interface RefactoringHistoryItem {
+  id: string;
+  type: RefactoringHistoryType;
+  title: string;
+  description: string;
+  repositoryId: string;
+  timestamp: string;
+  author: {
+    name: string;
+    avatar?: string;
+  };
+  status?: string;
+  proposalId?: string;
+  metadata?: Record<string, any>;
 }

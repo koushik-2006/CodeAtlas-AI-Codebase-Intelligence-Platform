@@ -62,6 +62,7 @@ export interface DemoStoreData {
   debugInvestigations: any[];
   debugFollowUps: Record<string, any[]>;
   refactoringProposals: any[];
+  refactoringHistory?: any[];
   debtOverviews: Record<string, any>;
   notifications: any[];
   activities: any[];
@@ -1099,6 +1100,30 @@ export function createInitialData(): DemoStoreData {
     },
   ];
 
+  const initialRefactoringHistory = [
+    {
+      id: "hist_init_1",
+      type: "scan",
+      title: "Scheduled Architecture Quality Scan",
+      description: "AST metric scan detected 7 findings across 5 files in sample-project.",
+      repositoryId: "sample-project",
+      timestamp: new Date(Date.now() - 3600000 * 4).toISOString(),
+      author: { name: "CodeAtlas Daemon" },
+      status: "completed",
+    },
+    {
+      id: "hist_init_2",
+      type: "proposal",
+      title: "Extract email & password verification guards into standalone validator",
+      description: "Proposed extract_function on src/services/auth.ts:18-32.",
+      repositoryId: "sample-project",
+      timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+      author: { name: "Alex Chen" },
+      status: "proposed",
+      proposalId: "prop_demo_1",
+    },
+  ];
+
   // 9. System Health & Operations Metrics
   const systemHealth = {
     status: "healthy",
@@ -1371,6 +1396,7 @@ export function createInitialData(): DemoStoreData {
     debugInvestigations,
     debugFollowUps: {},
     refactoringProposals,
+    refactoringHistory: initialRefactoringHistory,
     debtOverviews: { "sample-project": initialDebtOverview },
     notifications,
     activities,
@@ -2550,5 +2576,125 @@ export function deleteExplorerHistoryItem(id: string): void {
 export function clearExplorerHistory(): void {
   const store = getStore();
   store.explorerHistory = [];
+  saveStore(store);
+}
+
+// ---------------------------------------------------------------------------
+// Refactoring & Technical Debt Store Helpers
+// ---------------------------------------------------------------------------
+
+export function getTechnicalDebtOverview(repoId?: string): any {
+  const store = getStore();
+  if (!store.debtOverviews) store.debtOverviews = {};
+  if (repoId && repoId !== "workspace_all") {
+    return store.debtOverviews[repoId] || null;
+  }
+  return store.debtOverviews["workspace_all"] || store.debtOverviews["sample-project"] || null;
+}
+
+export function saveTechnicalDebtOverview(repoId: string, overview: any): void {
+  const store = getStore();
+  if (!store.debtOverviews) store.debtOverviews = {};
+  store.debtOverviews[repoId] = overview;
+  saveStore(store);
+}
+
+export function getRefactoringProposals(repoId?: string): any[] {
+  const store = getStore();
+  if (!store.refactoringProposals) store.refactoringProposals = [];
+  if (repoId && repoId !== "workspace_all") {
+    return store.refactoringProposals.filter((p: any) => p.repositoryId === repoId);
+  }
+  return store.refactoringProposals;
+}
+
+export function saveRefactoringProposal(proposal: any): void {
+  const store = getStore();
+  if (!store.refactoringProposals) store.refactoringProposals = [];
+  const idx = store.refactoringProposals.findIndex((p: any) => p.id === proposal.id);
+  if (idx !== -1) {
+    store.refactoringProposals[idx] = proposal;
+  } else {
+    store.refactoringProposals.unshift(proposal);
+  }
+  saveStore(store);
+}
+
+export function deleteRefactoringProposal(proposalId: string): void {
+  const store = getStore();
+  if (!store.refactoringProposals) return;
+  store.refactoringProposals = store.refactoringProposals.filter((p: any) => p.id !== proposalId);
+  saveStore(store);
+}
+
+export function updateRefactoringProposalStatus(proposalId: string, status: string): void {
+  const store = getStore();
+  if (!store.refactoringProposals) return;
+  const p = store.refactoringProposals.find((x: any) => x.id === proposalId);
+  if (p) {
+    p.status = status;
+    p.updatedAt = new Date().toISOString();
+    saveStore(store);
+  }
+}
+
+export function ignoreQualityFinding(findingId: string, reason: string, repoId?: string): void {
+  const store = getStore();
+  const targetRepo = repoId && repoId !== "workspace_all" ? repoId : "sample-project";
+  const overview = store.debtOverviews?.[targetRepo];
+  if (overview && overview.findings) {
+    const finding = overview.findings.find((f: any) => f.id === findingId);
+    if (finding) {
+      finding.status = "ignored";
+      finding.ignoreReason = reason || "Ignored by user";
+    }
+  }
+  // Also check workspace_all
+  const wsOverview = store.debtOverviews?.["workspace_all"];
+  if (wsOverview && wsOverview.findings) {
+    const finding = wsOverview.findings.find((f: any) => f.id === findingId);
+    if (finding) {
+      finding.status = "ignored";
+      finding.ignoreReason = reason || "Ignored by user";
+    }
+  }
+  saveStore(store);
+}
+
+export function restoreQualityFinding(findingId: string, repoId?: string): void {
+  const store = getStore();
+  const targetRepo = repoId && repoId !== "workspace_all" ? repoId : "sample-project";
+  const overview = store.debtOverviews?.[targetRepo];
+  if (overview && overview.findings) {
+    const finding = overview.findings.find((f: any) => f.id === findingId);
+    if (finding) {
+      finding.status = "open";
+      delete finding.ignoreReason;
+    }
+  }
+  const wsOverview = store.debtOverviews?.["workspace_all"];
+  if (wsOverview && wsOverview.findings) {
+    const finding = wsOverview.findings.find((f: any) => f.id === findingId);
+    if (finding) {
+      finding.status = "open";
+      delete finding.ignoreReason;
+    }
+  }
+  saveStore(store);
+}
+
+export function getRefactoringHistory(repoId?: string): any[] {
+  const store = getStore();
+  if (!store.refactoringHistory) store.refactoringHistory = [];
+  if (repoId && repoId !== "workspace_all") {
+    return store.refactoringHistory.filter((h: any) => h.repositoryId === repoId);
+  }
+  return store.refactoringHistory;
+}
+
+export function deleteRefactoringHistoryItem(id: string): void {
+  const store = getStore();
+  if (!store.refactoringHistory) return;
+  store.refactoringHistory = store.refactoringHistory.filter((h: any) => h.id !== id);
   saveStore(store);
 }
