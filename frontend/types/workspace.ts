@@ -29,6 +29,8 @@ export interface DbWorkspace {
   description: string;
   ownerId: string;
   isPersonal: boolean;
+  color?: string;
+  icon?: string;
   settings: WorkspaceSettings;
   createdAt: string;
   updatedAt: string;

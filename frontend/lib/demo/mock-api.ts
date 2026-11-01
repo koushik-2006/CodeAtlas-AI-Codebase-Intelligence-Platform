@@ -46,6 +46,8 @@ interface DemoStore {
   decisions: Record<string, any>;
   invitations: any[];
   repositories: any[];
+  repositoryFiles?: Record<string, Record<string, { code: string; language: string }>>;
+  repositoryTrees?: Record<string, any>;
   pullRequests: any[];
   reviewSessions: Record<string, any>;
   agentRuns: any[];
@@ -1255,24 +1257,32 @@ export async function handleMockRequest(
   if (cleanPath === "/api/workspaces") {
     if (normalizedMethod === "POST") {
       const name = body?.name || "New Team Workspace";
+      const slug = body?.slug || name.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+      const isPersonal = Boolean(body?.isPersonal || body?.type === "Personal");
       const newWs = {
         id: `ws_${Date.now()}`,
         name,
-        slug: name.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
-        description: body?.description || "Collaborative engineering workspace.",
+        slug,
+        description: body?.description || (isPersonal ? "Personal workspace for individual projects." : "Collaborative engineering workspace."),
         ownerId: "usr_demo",
-        isPersonal: false,
+        isPersonal,
         userRole: "owner",
+        color: body?.color || (isPersonal ? "#10B981" : "#7C5CFC"),
+        icon: body?.icon || (isPersonal ? "User" : "Building2"),
         memberCount: 1,
-        repoCount: 0,
+        repoCount: Array.isArray(body?.repositoryIds || body?.selectedRepoIds) ? (body.repositoryIds || body.selectedRepoIds).length : 0,
         settings: {
-          allowMemberInvites: true,
-          requireReviewDismissalReason: false,
+          allowMemberInvites: body?.settings?.allowMemberInvites ?? true,
+          requireReviewDismissalReason: body?.settings?.requireReviewDismissalReason ?? false,
+          aiReviewOnPR: body?.settings?.aiReviewOnPR ?? true,
+          defaultBranch: body?.settings?.defaultBranch || "main",
         },
         createdAt: timestamp,
         updatedAt: timestamp,
       };
       store.workspaces.push(newWs);
+
+      // Initialize members
       store.workspaceMembers[newWs.id] = [
         {
           id: `mem_${Date.now()}`,
@@ -1285,64 +1295,357 @@ export async function handleMockRequest(
           userAvatar: DEMO_USER.avatar,
         },
       ];
+
+      // Add selected repos
+      store.workspaceRepositories[newWs.id] = [];
+      const reposToInclude = body?.repositoryIds || body?.selectedRepoIds;
+      if (Array.isArray(reposToInclude) && reposToInclude.length > 0) {
+        reposToInclude.forEach((repoId: string, idx: number) => {
+          store.workspaceRepositories[newWs.id].push({
+            id: `wsr_${Date.now()}_${idx}`,
+            workspaceId: newWs.id,
+            repositoryId: repoId,
+            addedBy: "usr_demo",
+            addedAt: timestamp,
+          });
+        });
+      }
+
+      // Add invite emails as pending invitations
+      const emailsToInvite = body?.invitedEmails || body?.inviteEmails;
+      if (Array.isArray(emailsToInvite) && emailsToInvite.length > 0) {
+        emailsToInvite.forEach((email: string, idx: number) => {
+          const inv = {
+            id: `inv_${Date.now()}_${idx}`,
+            workspaceId: newWs.id,
+            workspaceName: newWs.name,
+            email: email.trim(),
+            role: "member",
+            token: `invite_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+            status: "pending",
+            invitedBy: "usr_demo",
+            invitedByName: "Demo User",
+            expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+            createdAt: timestamp,
+          };
+          store.invitations.unshift(inv);
+        });
+      }
+
+      // Auto-log activity & add notification
+      const newAct = {
+        id: `act_${Date.now()}`,
+        userId: "usr_demo",
+        type: "workspace_created",
+        title: `Created workspace "${newWs.name}"`,
+        description: `New ${isPersonal ? "personal" : "team"} workspace configured with ${newWs.repoCount} repositories.`,
+        timestamp,
+        status: "success",
+        href: `/workspaces/${newWs.id}`,
+        linkText: "Open Workspace",
+      };
+      store.activities.unshift(newAct);
+
+      const notif = {
+        id: `notif_${Date.now()}`,
+        userId: "usr_demo",
+        title: `Workspace "${newWs.name}" created`,
+        description: "Your workspace is ready for architecture exploration and collaboration.",
+        timestamp: "Just now",
+        read: false,
+        type: "system",
+        href: `/workspaces/${newWs.id}`,
+      };
+      store.notifications.unshift(notif);
+
       saveStore();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: newWs.id } }));
+      }
       return { success: true, data: newWs, workspace: newWs, timestamp };
     }
 
+    const enriched = store.workspaces.map((w) => ({
+      ...w,
+      members: store.workspaceMembers[w.id] || [],
+      memberCount: (store.workspaceMembers[w.id] || []).length || w.memberCount || 1,
+      repoCount: (store.workspaceRepositories[w.id] || []).length || w.repoCount || 0,
+    }));
     return {
       success: true,
-      workspaces: store.workspaces,
-      data: { workspaces: store.workspaces },
+      workspaces: enriched,
+      data: { workspaces: enriched },
       timestamp,
     };
+  }
+
+  // Duplicate workspace: POST /api/workspaces/:id/duplicate
+  const wsDuplicateMatch = cleanPath.match(/^\/api\/workspaces\/([^/]+)\/duplicate$/);
+  if (wsDuplicateMatch && normalizedMethod === "POST") {
+    const wsId = wsDuplicateMatch[1];
+    const source = store.workspaces.find((w) => w.id === wsId) || store.workspaces[0];
+    const newId = `ws_${Date.now()}`;
+    const newName = `${source.name} (Copy)`;
+    const newSlug = `${source.slug}-copy-${Math.random().toString(36).substring(2, 6)}`;
+
+    const newWs = {
+      ...source,
+      id: newId,
+      name: newName,
+      slug: newSlug,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    store.workspaces.push(newWs);
+
+    store.workspaceMembers[newId] = [
+      {
+        id: `mem_${Date.now()}`,
+        workspaceId: newId,
+        userId: "usr_demo",
+        role: "owner",
+        joinedAt: timestamp,
+        userName: DEMO_USER.name,
+        userEmail: DEMO_USER.email,
+        userAvatar: DEMO_USER.avatar,
+      },
+    ];
+
+    store.workspaceRepositories[newId] = [...(store.workspaceRepositories[wsId] || [])].map((r, i) => ({
+      ...r,
+      id: `wsr_${Date.now()}_${i}`,
+      workspaceId: newId,
+    }));
+
+    saveStore();
+    return { success: true, data: newWs, workspace: newWs, timestamp };
   }
 
   const wsDetailMatch = cleanPath.match(/^\/api\/workspaces\/([^/]+)$/);
   if (wsDetailMatch) {
     const wsId = wsDetailMatch[1];
-    const ws = store.workspaces.find((w) => w.id === wsId) || store.workspaces[0];
+    const wsIndex = store.workspaces.findIndex((w) => w.id === wsId);
+    const ws = wsIndex !== -1 ? store.workspaces[wsIndex] : store.workspaces[0];
+
+    if (normalizedMethod === "DELETE") {
+      if (wsIndex !== -1) {
+        store.workspaces.splice(wsIndex, 1);
+        delete store.workspaceMembers[wsId];
+        delete store.workspaceRepositories[wsId];
+        delete store.workspaceAnnotations[wsId];
+        delete store.workspaceArtifacts[wsId];
+        delete store.workspaceActivities[wsId];
+        delete store.discussions[wsId];
+        saveStore();
+        if (typeof window !== "undefined") {
+          const fallback = store.workspaces[0]?.id || "ws_team_demo";
+          localStorage.setItem("codeatlas_active_workspace_id", fallback);
+          window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: fallback } }));
+        }
+      }
+      return { success: true, message: "Workspace deleted", timestamp };
+    }
+
     if (normalizedMethod === "PATCH") {
-      Object.assign(ws, body);
-      saveStore();
+      if (ws) {
+        Object.assign(ws, body);
+        if (body?.settings) {
+          ws.settings = { ...ws.settings, ...body.settings };
+        }
+        ws.updatedAt = timestamp;
+        saveStore();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: wsId } }));
+        }
+      }
       return { success: true, data: ws, workspace: ws, timestamp };
     }
+
+    const members = store.workspaceMembers[wsId] || store.workspaceMembers["ws_team_demo"] || [];
+    const repos = store.workspaceRepositories[wsId] || store.workspaceRepositories["ws_team_demo"] || [];
+    const annotations = store.workspaceAnnotations[wsId] || store.workspaceAnnotations["ws_team_demo"] || [];
+    const artifacts = store.workspaceArtifacts[wsId] || store.workspaceArtifacts["ws_team_demo"] || [];
+    const activities = store.workspaceActivities?.[wsId] || store.workspaceActivities?.["ws_team_demo"] || [];
+
     return {
       success: true,
       data: {
         workspace: ws,
-        members: store.workspaceMembers[wsId] || store.workspaceMembers["ws_team_demo"] || [],
-        repositories: store.workspaceRepositories[wsId] || store.workspaceRepositories["ws_team_demo"] || [],
-        annotations: store.workspaceAnnotations[wsId] || store.workspaceAnnotations["ws_team_demo"] || [],
-        artifacts: store.workspaceArtifacts[wsId] || store.workspaceArtifacts["ws_team_demo"] || [],
-        activity: [],
+        members,
+        repositories: repos,
+        annotations,
+        artifacts,
+        activity: activities,
       },
       workspace: ws,
-      members: store.workspaceMembers[wsId] || store.workspaceMembers["ws_team_demo"] || [],
-      repositories: store.workspaceRepositories[wsId] || store.workspaceRepositories["ws_team_demo"] || [],
-      annotations: store.workspaceAnnotations[wsId] || store.workspaceAnnotations["ws_team_demo"] || [],
-      artifacts: store.workspaceArtifacts[wsId] || store.workspaceArtifacts["ws_team_demo"] || [],
+      members,
+      repositories: repos,
+      annotations,
+      artifacts,
+      activity: activities,
       timestamp,
     };
   }
 
-  // Workspace sub-collections
-  const wsSubMatch = cleanPath.match(/^\/api\/workspaces\/([^/]+)\/(members|repositories|annotations|artifacts|activity|invitations)$/);
+  // Workspace sub-collections: /api/workspaces/:id/(members|repositories|annotations|artifacts|activity|invitations|discussions)
+  const wsSubMatch = cleanPath.match(/^\/api\/workspaces\/([^/]+)\/(members|repositories|annotations|artifacts|activity|invitations|discussions)$/);
   if (wsSubMatch) {
     const wsId = wsSubMatch[1];
     const sub = wsSubMatch[2];
 
-    if (normalizedMethod === "POST") {
+    if (normalizedMethod === "DELETE") {
+      if (sub === "members") {
+        const userId = searchParams.get("userId") || body?.userId;
+        if (userId && store.workspaceMembers[wsId]) {
+          store.workspaceMembers[wsId] = store.workspaceMembers[wsId].filter((m) => m.userId !== userId);
+          const ws = store.workspaces.find((w) => w.id === wsId);
+          if (ws) ws.memberCount = store.workspaceMembers[wsId].length;
+          saveStore();
+        }
+        return { success: true, message: "Member removed", timestamp };
+      }
+      if (sub === "repositories") {
+        const repoId = searchParams.get("repositoryId") || body?.repositoryId;
+        if (repoId && store.workspaceRepositories[wsId]) {
+          store.workspaceRepositories[wsId] = store.workspaceRepositories[wsId].filter((r) => r.repositoryId !== repoId);
+          const ws = store.workspaces.find((w) => w.id === wsId);
+          if (ws) ws.repoCount = store.workspaceRepositories[wsId].length;
+          saveStore();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+          }
+        }
+        return { success: true, message: "Repository removed", timestamp };
+      }
       if (sub === "annotations") {
+        const annoId = searchParams.get("annotationId") || body?.annotationId;
+        if (annoId && store.workspaceAnnotations[wsId]) {
+          store.workspaceAnnotations[wsId] = store.workspaceAnnotations[wsId].filter((a) => a.id !== annoId);
+          saveStore();
+        }
+        return { success: true, message: "Annotation deleted", timestamp };
+      }
+      if (sub === "invitations") {
+        const invId = searchParams.get("invitationId") || body?.invitationId;
+        store.invitations = (store.invitations || []).filter((i) => i.id !== invId && i.token !== invId);
+        saveStore();
+        return { success: true, message: "Invitation revoked", timestamp };
+      }
+    }
+
+    if (normalizedMethod === "PATCH") {
+      if (sub === "members") {
+        const userId = body?.userId;
+        const newRole = body?.role;
+        const list = store.workspaceMembers[wsId] || [];
+        const member = list.find((m) => m.userId === userId);
+        if (member && newRole) {
+          member.role = newRole;
+          saveStore();
+        }
+        return { success: true, message: "Role updated", member, timestamp };
+      }
+      if (sub === "annotations") {
+        const annoId = body?.id || body?.annotationId;
+        const list = store.workspaceAnnotations[wsId] || [];
+        const anno = list.find((a) => a.id === annoId);
+        if (anno) {
+          Object.assign(anno, body);
+          anno.updatedAt = timestamp;
+          saveStore();
+        }
+        return { success: true, data: { annotation: anno }, annotation: anno, timestamp };
+      }
+    }
+
+    if (normalizedMethod === "POST") {
+      if (sub === "members") {
+        const newMem = {
+          id: `mem_${Date.now()}`,
+          workspaceId: wsId,
+          userId: `usr_${Math.random().toString(36).substring(2, 8)}`,
+          role: body?.role || "member",
+          joinedAt: timestamp,
+          userName: body?.userName || body?.name || (body?.email ? body.email.split("@")[0] : "New Member"),
+          userEmail: body?.userEmail || body?.email || "member@codeatlas.dev",
+          userAvatar: DEMO_USER.avatar,
+        };
+        if (!store.workspaceMembers[wsId]) store.workspaceMembers[wsId] = [];
+        store.workspaceMembers[wsId].push(newMem);
+        const ws = store.workspaces.find((w) => w.id === wsId);
+        if (ws) ws.memberCount = store.workspaceMembers[wsId].length;
+        saveStore();
+        return { success: true, data: newMem, member: newMem, timestamp };
+      }
+
+      if (sub === "repositories") {
+        const repoId = body?.repositoryId;
+        if (!store.workspaceRepositories[wsId]) store.workspaceRepositories[wsId] = [];
+        const exists = store.workspaceRepositories[wsId].find((r) => r.repositoryId === repoId);
+        if (!exists && repoId) {
+          const item = {
+            id: `wsr_${Date.now()}`,
+            workspaceId: wsId,
+            repositoryId: repoId,
+            addedBy: "usr_demo",
+            addedAt: timestamp,
+          };
+          store.workspaceRepositories[wsId].push(item);
+          const ws = store.workspaces.find((w) => w.id === wsId);
+          if (ws) ws.repoCount = store.workspaceRepositories[wsId].length;
+          saveStore();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+          }
+        }
+        return { success: true, message: "Repository added to workspace", timestamp };
+      }
+
+      if (sub === "discussions") {
+        const newThread = {
+          id: `disc_${Date.now()}`,
+          workspaceId: wsId,
+          title: body?.title || "Discussion Thread",
+          body: body?.body || "",
+          repositoryId: body?.repositoryId || "sample-project",
+          filePath: body?.filePath || "",
+          line: body?.line || undefined,
+          authorId: "usr_demo",
+          authorName: "Demo User",
+          authorAvatar: DEMO_USER.avatar,
+          status: "open",
+          createdAt: timestamp,
+          replies: [],
+          reactions: {},
+        };
+        if (!store.discussions[wsId]) store.discussions[wsId] = [];
+        store.discussions[wsId].unshift(newThread);
+        saveStore();
+        return { success: true, data: { discussion: newThread }, discussion: newThread, timestamp };
+      }
+
+      if (sub === "annotations") {
+        let snippet = body?.codeSnippet || "";
+        if (!snippet && body?.repositoryId && body?.filePath && store.repositoryFiles?.[body.repositoryId]?.[body.filePath]) {
+          const lines = store.repositoryFiles[body.repositoryId][body.filePath].code.split("\n");
+          const start = Math.max(0, (body.startLine || 1) - 1);
+          const end = Math.min(lines.length, body.endLine || start + 5);
+          snippet = lines.slice(start, end).join("\n");
+        }
+
         const item = {
           id: `anno_${Date.now()}`,
           workspaceId: wsId,
           repositoryId: body?.repositoryId || "sample-project",
           filePath: body?.filePath || "src/services/auth.ts",
-          startLine: body?.startLine || 1,
-          endLine: body?.endLine || 10,
+          startLine: Number(body?.startLine) || 1,
+          endLine: Number(body?.endLine) || 10,
           symbolName: body?.symbolName || "function",
           category: body?.category || "architecture",
+          title: body?.title || "Code Note",
           content: body?.content || "",
+          codeSnippet: snippet,
+          tags: body?.tags || ["note"],
           authorId: "usr_demo",
           authorName: "Demo User",
           authorAvatar: DEMO_USER.avatar,
@@ -1354,6 +1657,7 @@ export async function handleMockRequest(
         saveStore();
         return { success: true, data: { annotation: item }, annotation: item, timestamp };
       }
+
       if (sub === "artifacts") {
         const art = {
           id: `art_${Date.now()}`,
@@ -1375,17 +1679,19 @@ export async function handleMockRequest(
         saveStore();
         return { success: true, data: { artifact: art }, artifact: art, timestamp };
       }
+
       if (sub === "invitations") {
         const inv = {
           id: `inv_${Date.now()}`,
           workspaceId: wsId,
+          workspaceName: store.workspaces.find((w) => w.id === wsId)?.name || "Workspace",
           email: body?.email,
           role: body?.role || "member",
-          token: `invite-${Date.now()}`,
+          token: `invite_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
           status: "pending",
           invitedBy: "usr_demo",
           invitedByName: "Demo User",
-          expiresAt: "2026-12-31T23:59:59.000Z",
+          expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
           createdAt: timestamp,
         };
         store.invitations.unshift(inv);
@@ -1398,8 +1704,9 @@ export async function handleMockRequest(
     if (sub === "repositories") return { success: true, data: store.workspaceRepositories[wsId] || store.workspaceRepositories["ws_team_demo"] || [], repositories: store.workspaceRepositories[wsId] || [], timestamp };
     if (sub === "annotations") return { success: true, data: store.workspaceAnnotations[wsId] || store.workspaceAnnotations["ws_team_demo"] || [], annotations: store.workspaceAnnotations[wsId] || [], timestamp };
     if (sub === "artifacts") return { success: true, data: store.workspaceArtifacts[wsId] || store.workspaceArtifacts["ws_team_demo"] || [], artifacts: store.workspaceArtifacts[wsId] || [], timestamp };
-    if (sub === "activity") return { success: true, data: [], activity: [], timestamp };
+    if (sub === "activity") return { success: true, data: store.workspaceActivities?.[wsId] || store.workspaceActivities?.["ws_team_demo"] || [], activity: store.workspaceActivities?.[wsId] || [], timestamp };
     if (sub === "invitations") return { success: true, data: store.invitations.filter((i) => i.workspaceId === wsId), timestamp };
+    if (sub === "discussions") return { success: true, data: store.discussions[wsId] || store.discussions["ws_team_demo"] || [], discussions: store.discussions[wsId] || [], timestamp };
   }
 
   // Finding discussions & decisions
@@ -1447,18 +1754,37 @@ export async function handleMockRequest(
   if (invMatch) {
     const tok = invMatch[1];
     const inv = store.invitations.find((i) => i.token === tok) || store.invitations[0];
+    const ws = store.workspaces.find((w) => w.id === inv?.workspaceId) || store.workspaces[0];
     if (normalizedMethod === "POST") {
-      inv.status = "accepted";
+      if (inv) inv.status = "accepted";
+      if (ws) {
+        if (!store.workspaceMembers[ws.id]) store.workspaceMembers[ws.id] = [];
+        if (!store.workspaceMembers[ws.id].some((m) => m.userId === DEMO_USER.id)) {
+          store.workspaceMembers[ws.id].push({
+            id: `mem_${Date.now()}`,
+            workspaceId: ws.id,
+            userId: DEMO_USER.id,
+            role: inv?.role || "member",
+            joinedAt: timestamp,
+            userName: DEMO_USER.name,
+            userEmail: DEMO_USER.email,
+            userAvatar: DEMO_USER.avatar,
+          });
+        }
+      }
       saveStore();
-      return { success: true, message: "Invitation accepted", timestamp };
+      return { success: true, message: "Invitation accepted", data: { workspace: ws }, timestamp };
     }
+    const invData = {
+      ...inv,
+      workspaceName: ws?.name || "Acme Engineering",
+      workspaceId: ws?.id || "ws_team_demo",
+    };
     return {
       success: true,
-      data: {
-        invitation: inv,
-        workspace: store.workspaces.find((w) => w.id === inv.workspaceId) || store.workspaces[0],
-      },
-      invitation: inv,
+      data: invData,
+      invitation: invData,
+      workspace: ws,
       timestamp,
     };
   }

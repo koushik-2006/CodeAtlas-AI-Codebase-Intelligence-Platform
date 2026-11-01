@@ -86,11 +86,10 @@ export default function DashboardPage() {
       {oauthNotice && (
         <div
           role="status"
-          className={`p-4 rounded-2xl flex items-center justify-between gap-3 text-sm font-medium border shadow-sm transition-all animate-in fade-in ${
-            oauthNotice.type === "success"
+          className={`p-4 rounded-2xl flex items-center justify-between gap-3 text-sm font-medium border shadow-sm transition-all animate-in fade-in ${oauthNotice.type === "success"
               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-500"
               : "bg-red-500/10 border-red-500/30 text-red-500"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-3">
             {oauthNotice.type === "success" ? (

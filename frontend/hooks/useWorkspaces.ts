@@ -26,7 +26,7 @@ export function useWorkspaces() {
       const json = res.data || {};
       if (res.success && json.workspaces) {
         const list: WorkspaceItem[] = json.workspaces;
-        setWorkspaces(list);
+        setWorkspaces([...list]);
 
         // Resolve active workspace from local storage or default to first team workspace / personal
         const savedId = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;

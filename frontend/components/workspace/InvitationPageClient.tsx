@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Building2,
@@ -13,14 +13,22 @@ import {
   ShieldCheck,
   Shield,
   Eye,
+  Clock,
+  LogIn,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { apiClient } from "@/services/api-client";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function InvitationPage() {
   const params = useParams();
   const router = useRouter();
-  const token = params.token as string;
+  const searchParams = useSearchParams();
+  const { user } = useAuth();
+
+  const rawToken = (params?.token as string) || "";
+  const token =
+    rawToken === "view" ? searchParams.get("token") || "preview-token" : rawToken;
 
   const [invitation, setInvitation] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -36,7 +44,7 @@ export default function InvitationPage() {
         const res = await apiClient.get<any>(`/api/invitations/${token}`);
         const json = res.data || {};
         if (!res.success || !json) {
-          throw new Error(json.error || res.message || "Invitation not found or has expired");
+          throw new Error(json.error || res.message || "Invitation not found, revoked, or has expired");
         }
         setInvitation(json.data || json);
       } catch (err: any) {
@@ -61,21 +69,28 @@ export default function InvitationPage() {
       }
 
       if (action === "accept") {
+        const wsId = json.data?.workspace?.id || invitation?.workspaceId || "ws_team_demo";
+        if (typeof window !== "undefined") {
+          localStorage.setItem("codeatlas_active_workspace_id", wsId);
+          window.dispatchEvent(
+            new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: wsId } })
+          );
+        }
         setSuccessMessage(json.message || "Invitation accepted!");
         setTimeout(() => {
-          router.push(`/workspaces/${json.data?.workspace?.id || ""}`);
-        }, 1500);
+          router.push(`/workspaces/${wsId}`);
+        }, 1200);
       } else {
         router.push("/workspaces");
       }
     } catch (err: any) {
-      setError(err.message || "Failed to accept invitation");
+      setError(err.message || "Failed to process invitation");
       setSubmitting(false);
     }
   };
 
   const getRoleBadge = (role: string) => {
-    switch (role) {
+    switch (role?.toLowerCase()) {
       case "admin":
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 border border-emerald-500/30 text-emerald-400">
@@ -100,6 +115,8 @@ export default function InvitationPage() {
     }
   };
 
+  const isAuthenticated = Boolean(user || (typeof window !== "undefined" && localStorage.getItem("codeatlas_demo_mode") === "true"));
+
   return (
     <div className="min-h-screen bg-[var(--bg-main)] flex flex-col justify-between p-4 sm:p-6">
       {/* Top Bar */}
@@ -107,12 +124,15 @@ export default function InvitationPage() {
         <Link href="/" className="flex items-center gap-2">
           <Logo size="md" />
         </Link>
-        <Link
-          href="/login"
-          className="text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          Sign In
-        </Link>
+        {!isAuthenticated && (
+          <Link
+            href={`/login?redirect=${encodeURIComponent(`/invitations/view/?token=${token}`)}`}
+            className="text-xs font-semibold text-[var(--primary)] hover:underline flex items-center gap-1.5"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Sign In</span>
+          </Link>
+        )}
       </header>
 
       {/* Main Card */}
@@ -132,14 +152,16 @@ export default function InvitationPage() {
                 <AlertCircle className="w-6 h-6" />
               </div>
               <h2 className="text-lg font-bold text-[var(--text-primary)]">Invitation Unavailable</h2>
-              <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">{error}</p>
-              <Link
-                href="/workspaces"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-medium hover:bg-[var(--primary)]/90 transition-colors"
-              >
-                <span>Go to Workspaces</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </Link>
+              <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto leading-relaxed">{error}</p>
+              <div className="pt-2">
+                <Link
+                  href="/workspaces"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-semibold hover:bg-[var(--primary)]/90 transition-colors shadow-md shadow-[var(--primary)]/20"
+                >
+                  <span>Go to Workspaces</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Link>
+              </div>
             </div>
           ) : successMessage ? (
             <div className="text-center py-8 space-y-3">
@@ -148,7 +170,7 @@ export default function InvitationPage() {
               </div>
               <h2 className="text-lg font-bold text-[var(--text-primary)]">Welcome to the Team!</h2>
               <p className="text-xs text-emerald-400">{successMessage}</p>
-              <p className="text-[11px] text-[var(--text-secondary)]">Redirecting to your workspace...</p>
+              <p className="text-[11px] text-[var(--text-secondary)]">Opening workspace dashboard...</p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -163,7 +185,7 @@ export default function InvitationPage() {
                   {invitation.workspaceName}
                 </h2>
                 <p className="text-xs text-[var(--text-secondary)] mt-2">
-                  <strong>{invitation.invitedByName || "A teammate"}</strong> has invited you to collaborate on CodeAtlas.
+                  <strong>{invitation.invitedByName || "A teammate"}</strong> invited you to collaborate on code architecture and AI reviews.
                 </p>
               </div>
 
@@ -173,13 +195,14 @@ export default function InvitationPage() {
                   <span className="font-semibold text-[var(--text-primary)] font-mono">{invitation.email}</span>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-secondary)]">Assigned Role:</span>
+                  <span className="text-[var(--text-secondary)]">Role Offered:</span>
                   <div>{getRoleBadge(invitation.role)}</div>
                 </div>
                 <div className="flex items-center justify-between text-xs">
-                  <span className="text-[var(--text-secondary)]">Status:</span>
-                  <span className="capitalize text-xs font-medium text-emerald-400">
-                    {invitation.status}
+                  <span className="text-[var(--text-secondary)]">Expires:</span>
+                  <span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+                    <Clock className="w-3 h-3 text-amber-400" />
+                    <span>In 7 days</span>
                   </span>
                 </div>
               </div>
@@ -187,6 +210,19 @@ export default function InvitationPage() {
               {invitation.isExpired ? (
                 <div className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-400 text-xs text-center">
                   This invitation has expired. Please ask the workspace owner to send a new invite.
+                </div>
+              ) : !isAuthenticated ? (
+                <div className="space-y-3 pt-2">
+                  <Link
+                    href={`/login?redirect=${encodeURIComponent(`/invitations/view/?token=${token}`)}`}
+                    className="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary)]/90 text-white text-xs font-semibold transition-all shadow-md shadow-[var(--primary)]/25 flex items-center justify-center gap-2"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Sign in to Accept Invitation</span>
+                  </Link>
+                  <p className="text-[11px] text-center text-[var(--text-secondary)]">
+                    You need to be signed in to join this workspace.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2.5 pt-2">

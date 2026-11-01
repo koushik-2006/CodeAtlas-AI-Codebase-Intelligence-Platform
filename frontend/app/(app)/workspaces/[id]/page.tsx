@@ -6,6 +6,7 @@ export function generateStaticParams() {
     { id: "ws_team_demo" },
     { id: "ws_default" },
     { id: "workspace-1" },
+    { id: "view" },
   ];
 }
 

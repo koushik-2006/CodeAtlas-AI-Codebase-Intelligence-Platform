@@ -4,6 +4,7 @@ import InvitationPageClient from "@/components/workspace/InvitationPageClient";
 export function generateStaticParams() {
   return [
     { token: "preview-token" },
+    { token: "view" },
   ];
 }
 

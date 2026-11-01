@@ -70,7 +70,7 @@ export interface DemoStoreData {
   traces: any[];
 }
 
-const STORE_VERSION = 3;
+const STORE_VERSION = 4;
 
 /**
  * Generates the complete initial seeded dataset across 3 workspaces and 7 repositories.
@@ -1037,12 +1037,168 @@ export function createInitialData(): DemoStoreData {
     workspaces,
     workspaceMembers,
     workspaceRepositories,
-    workspaceAnnotations: {},
-    workspaceArtifacts: {},
-    workspaceActivities: {},
-    discussions: {},
+    workspaceAnnotations: {
+      ws_team_demo: [
+        {
+          id: "anno_1",
+          workspaceId: "ws_team_demo",
+          repositoryId: "sample-project",
+          filePath: "src/services/auth.ts",
+          startLine: 18,
+          endLine: 26,
+          symbolName: "loginUser",
+          category: "security",
+          title: "WebAuthn Assertion Ceremony",
+          content: "Core authentication entrypoint. Verify challenge nonces against Redis before issuing JWT session tokens.",
+          codeSnippet: "export async function loginUser(email: string, pass: string): Promise<string> {\n  if (creds.isWebAuthn) {\n    return verifyWebAuthnAssertion(creds.assertion);\n  }\n  const user = await UserService.findUserByEmail(email);",
+          tags: ["auth", "security", "webauthn"],
+          authorId: "usr_demo",
+          authorName: "Demo User",
+          authorAvatar: DEMO_USER.avatar,
+          createdAt: "2026-01-20T10:00:00.000Z",
+          updatedAt: "2026-01-20T10:00:00.000Z",
+        },
+        {
+          id: "anno_2",
+          workspaceId: "ws_team_demo",
+          repositoryId: "sample-project",
+          filePath: "src/utils/validation.ts",
+          startLine: 7,
+          endLine: 11,
+          symbolName: "validatePasskeyChallenge",
+          category: "architecture",
+          title: "Passkey Challenge Boundary",
+          content: "Validates minimum 32-character requirement for cryptographic nonces.",
+          codeSnippet: "export function validatePasskeyChallenge(challenge: string): boolean {\n  return typeof challenge === 'string' && challenge.length >= 32;\n}",
+          tags: ["validation", "crypto"],
+          authorId: "usr_elena",
+          authorName: "Elena Rostova",
+          authorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop",
+          createdAt: "2026-01-21T11:30:00.000Z",
+          updatedAt: "2026-01-21T11:30:00.000Z",
+        },
+      ],
+    },
+    workspaceArtifacts: {
+      ws_team_demo: [
+        {
+          id: "art_1",
+          workspaceId: "ws_team_demo",
+          repositoryId: "sample-project",
+          title: "Authentication & Session Architecture Blueprint",
+          description: "System diagram and security verification for WebAuthn passkey integration.",
+          type: "architecture_snapshot",
+          creatorId: "usr_demo",
+          creatorName: "Demo User",
+          creatorAvatar: DEMO_USER.avatar,
+          content: "# Authentication & Session Architecture\n\nDeterministic verification flow for WebAuthn passkey assertion validation and distributed session caching.",
+          visibility: "workspace",
+          createdAt: "2026-01-20T12:00:00.000Z",
+          updatedAt: "2026-01-20T12:00:00.000Z",
+        },
+      ],
+    },
+    workspaceActivities: {
+      ws_team_demo: [
+        {
+          id: "ws_act_1",
+          workspaceId: "ws_team_demo",
+          userId: "usr_demo",
+          userName: "Demo User",
+          type: "repo_connected",
+          title: "Connected demo-auth-service",
+          description: "Added repository and parsed 24 AST symbols.",
+          timestamp: new Date(Date.now() - 3600000).toISOString(),
+          status: "success",
+        },
+        {
+          id: "ws_act_2",
+          workspaceId: "ws_team_demo",
+          userId: "usr_elena",
+          userName: "Elena Rostova",
+          type: "member_joined",
+          title: "Elena Rostova joined workspace",
+          description: "Accepted invite as Admin.",
+          timestamp: new Date(Date.now() - 86400000).toISOString(),
+          status: "info",
+        },
+        {
+          id: "ws_act_3",
+          workspaceId: "ws_team_demo",
+          userId: "usr_marcus",
+          userName: "Marcus Chen",
+          type: "review_completed",
+          title: "Code review completed for PR #101",
+          description: "Automated scan detected 1 critical security finding.",
+          timestamp: new Date(Date.now() - 172800000).toISOString(),
+          status: "warning",
+        },
+      ],
+    },
+    discussions: {
+      ws_team_demo: [
+        {
+          id: "disc_thread_1",
+          workspaceId: "ws_team_demo",
+          title: "WebAuthn challenge replay remediation architecture",
+          body: "We need to ensure that the WebAuthn challenge nonce is atomically invalidated in the Redis cluster cache immediately upon assertion verification to prevent replay attacks.",
+          repositoryId: "sample-project",
+          filePath: "src/services/auth.ts",
+          line: 24,
+          authorId: "usr_demo",
+          authorName: "Demo User",
+          authorAvatar: DEMO_USER.avatar,
+          status: "open",
+          createdAt: "2026-01-22T09:00:00.000Z",
+          replies: [
+            {
+              id: "disc_rep_1",
+              authorId: "usr_elena",
+              authorName: "Elena Rostova",
+              authorAvatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop",
+              body: "Agreed @Demo. I have implemented a distributed Lua script in `nonceCache.consume(assertion.challenge)` on branch `feat/webauthn-passkeys`.",
+              createdAt: "2026-01-22T09:45:00.000Z",
+            },
+          ],
+          reactions: {
+            "👍": ["usr_demo", "usr_elena", "usr_marcus"],
+            "🚀": ["usr_demo", "usr_elena"],
+          },
+        },
+        {
+          id: "disc_thread_2",
+          workspaceId: "ws_team_demo",
+          title: "Centralizing AST parser options across microservices",
+          body: "Should we extract the shared TypeScript AST configuration from demo-auth-service into shared-core-lib so all services share identical parsing rules?",
+          repositoryId: "shared-core-lib",
+          authorId: "usr_marcus",
+          authorName: "Marcus Chen",
+          authorAvatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+          status: "resolved",
+          createdAt: "2026-01-18T14:00:00.000Z",
+          replies: [],
+          reactions: {
+            "💡": ["usr_demo", "usr_marcus"],
+          },
+        },
+      ],
+    },
     decisions: {},
-    invitations: [],
+    invitations: [
+      {
+        id: "inv_preview",
+        workspaceId: "ws_team_demo",
+        workspaceName: "Acme Engineering",
+        email: "newteammate@example.com",
+        role: "member",
+        token: "preview-token",
+        status: "pending",
+        invitedBy: "usr_demo",
+        invitedByName: "Demo User",
+        expiresAt: "2026-12-31T23:59:59.000Z",
+        createdAt: "2026-01-20T10:00:00.000Z",
+      },
+    ],
     repositories,
     repositoryTrees,
     repositoryFiles,
@@ -1309,3 +1465,526 @@ export function addRepository(repo: any): any {
   return newRepo;
 }
 
+
+
+// ---------------------------------------------------------------------------
+// Comprehensive Workspace Mutation Helpers
+// ---------------------------------------------------------------------------
+
+export function updateWorkspace(id: string, updates: Partial<any>): any {
+  const store = getStore();
+  const wsIndex = store.workspaces.findIndex((w) => w.id === id);
+  if (wsIndex === -1) return null;
+  const updated = {
+    ...store.workspaces[wsIndex],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+  store.workspaces[wsIndex] = updated;
+
+  logActivity({
+    type: "workspace_updated",
+    title: `Updated workspace "${updated.name}"`,
+    description: "Workspace settings and details were updated.",
+    href: `/workspaces/${id}`,
+    linkText: "View Workspace",
+  });
+
+  saveStore(store);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: id } }));
+  }
+  return updated;
+}
+
+export function duplicateWorkspace(id: string): any {
+  const store = getStore();
+  const source = store.workspaces.find((w) => w.id === id);
+  if (!source) return null;
+
+  const newId = `ws_${Date.now()}`;
+  const newName = `${source.name} (Copy)`;
+  const newSlug = `${source.slug}-copy-${Math.random().toString(36).substring(2, 6)}`;
+
+  const newWs = {
+    ...source,
+    id: newId,
+    name: newName,
+    slug: newSlug,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  store.workspaces.push(newWs);
+  store.workspaceMembers[newId] = [
+    {
+      id: `mem_${Date.now()}`,
+      workspaceId: newId,
+      userId: "usr_demo",
+      role: "owner",
+      joinedAt: new Date().toISOString(),
+      userName: "Demo User",
+      userEmail: "demo@codeatlas.dev",
+      userAvatar: DEMO_USER.avatar,
+    },
+  ];
+
+  store.workspaceRepositories[newId] = [...(store.workspaceRepositories[id] || [])].map((r, i) => ({
+    ...r,
+    id: `wsr_${Date.now()}_${i}`,
+    workspaceId: newId,
+  }));
+
+  logActivity({
+    type: "workspace_created",
+    title: `Duplicated workspace "${newName}"`,
+    description: `Cloned configuration and repositories from "${source.name}".`,
+    href: `/workspaces/${newId}`,
+    linkText: "Open Copy",
+  });
+
+  saveStore(store);
+  return newWs;
+}
+
+export function deleteWorkspace(id: string): boolean {
+  const store = getStore();
+  const ws = store.workspaces.find((w) => w.id === id);
+  if (!ws) return false;
+
+  store.workspaces = store.workspaces.filter((w) => w.id !== id);
+  delete store.workspaceMembers[id];
+  delete store.workspaceRepositories[id];
+  delete store.workspaceAnnotations[id];
+  delete store.workspaceArtifacts[id];
+  delete store.workspaceActivities[id];
+  delete store.discussions[id];
+
+  logActivity({
+    type: "workspace_deleted",
+    title: `Deleted workspace "${ws.name}"`,
+    description: "Workspace and its linked resources have been permanently removed.",
+  });
+
+  saveStore(store);
+
+  // If deleted workspace was active, switch to first remaining
+  if (typeof window !== "undefined") {
+    const activeId = localStorage.getItem("codeatlas_active_workspace_id");
+    if (activeId === id) {
+      const fallback = store.workspaces[0]?.id || "ws_team_demo";
+      localStorage.setItem("codeatlas_active_workspace_id", fallback);
+      window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: fallback } }));
+    }
+  }
+
+  return true;
+}
+
+export function addWorkspaceMember(workspaceId: string, member: { email: string; role: string; name?: string }): any {
+  const store = getStore();
+  if (!store.workspaceMembers[workspaceId]) store.workspaceMembers[workspaceId] = [];
+
+  const newMem = {
+    id: `mem_${Date.now()}`,
+    workspaceId,
+    userId: `usr_${Math.random().toString(36).substring(2, 8)}`,
+    role: member.role || "member",
+    joinedAt: new Date().toISOString(),
+    userName: member.name || member.email.split("@")[0],
+    userEmail: member.email,
+    userAvatar: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop`,
+  };
+
+  store.workspaceMembers[workspaceId].push(newMem);
+
+  // Update member count on workspace
+  const ws = store.workspaces.find((w) => w.id === workspaceId);
+  if (ws) ws.memberCount = store.workspaceMembers[workspaceId].length;
+
+  logActivity({
+    type: "member_joined",
+    title: `Added ${newMem.userName} to workspace`,
+    description: `Assigned role: ${newMem.role}.`,
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  return newMem;
+}
+
+export function updateWorkspaceMemberRole(workspaceId: string, userId: string, newRole: string): boolean {
+  const store = getStore();
+  const list = store.workspaceMembers[workspaceId] || [];
+  const member = list.find((m) => m.userId === userId);
+  if (!member) return false;
+
+  member.role = newRole;
+
+  logActivity({
+    type: "role_changed",
+    title: `Updated role for ${member.userName}`,
+    description: `Role changed to ${newRole}.`,
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function removeWorkspaceMember(workspaceId: string, userId: string): boolean {
+  const store = getStore();
+  const list = store.workspaceMembers[workspaceId] || [];
+  const target = list.find((m) => m.userId === userId);
+  if (!target) return false;
+
+  store.workspaceMembers[workspaceId] = list.filter((m) => m.userId !== userId);
+
+  const ws = store.workspaces.find((w) => w.id === workspaceId);
+  if (ws) ws.memberCount = store.workspaceMembers[workspaceId].length;
+
+  logActivity({
+    type: "member_removed",
+    title: `Removed ${target.userName} from workspace`,
+    description: "Member access revoked.",
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function addWorkspaceRepository(workspaceId: string, repositoryId: string): any {
+  const store = getStore();
+  if (!store.workspaceRepositories[workspaceId]) store.workspaceRepositories[workspaceId] = [];
+
+  const existing = store.workspaceRepositories[workspaceId].find((r) => r.repositoryId === repositoryId);
+  if (existing) return existing;
+
+  const item = {
+    id: `wsr_${Date.now()}`,
+    workspaceId,
+    repositoryId,
+    addedBy: "usr_demo",
+    addedAt: new Date().toISOString(),
+  };
+
+  store.workspaceRepositories[workspaceId].push(item);
+
+  const ws = store.workspaces.find((w) => w.id === workspaceId);
+  if (ws) ws.repoCount = store.workspaceRepositories[workspaceId].length;
+
+  const repo = store.repositories.find((r) => r.id === repositoryId);
+  logActivity({
+    type: "repo_connected",
+    title: `Connected ${repo?.name || repositoryId} to workspace`,
+    description: "Repository added to shared intelligence workspace.",
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+  }
+  return item;
+}
+
+export function removeWorkspaceRepository(workspaceId: string, repositoryId: string): boolean {
+  const store = getStore();
+  const list = store.workspaceRepositories[workspaceId] || [];
+  store.workspaceRepositories[workspaceId] = list.filter((r) => r.repositoryId !== repositoryId);
+
+  const ws = store.workspaces.find((w) => w.id === workspaceId);
+  if (ws) ws.repoCount = store.workspaceRepositories[workspaceId].length;
+
+  const repo = store.repositories.find((r) => r.id === repositoryId);
+  logActivity({
+    type: "repo_disconnected",
+    title: `Removed ${repo?.name || repositoryId} from workspace`,
+    description: "Repository disconnected from this workspace.",
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+  }
+  return true;
+}
+
+export function reindexWorkspaceRepository(workspaceId: string, repositoryId: string): any {
+  const store = getStore();
+  const repo = store.repositories.find((r) => r.id === repositoryId);
+  if (repo) {
+    repo.lastAnalyzed = "Just now";
+    repo.lastIndexed = "Just now";
+    repo.status = "ready";
+    repo.progress = 100;
+  }
+
+  logActivity({
+    type: "indexing_completed",
+    title: `Re-indexed ${repo?.name || repositoryId}`,
+    description: "Full AST deterministic symbol graph refreshed.",
+    href: `/repositories/${repositoryId}`,
+  });
+
+  saveStore(store);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+  }
+  return repo;
+}
+
+export function createWorkspaceInvitation(workspaceId: string, email: string, role: string): any {
+  const store = getStore();
+  const ws = store.workspaces.find((w) => w.id === workspaceId);
+  const token = `invite_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+  const inv = {
+    id: `inv_${Date.now()}`,
+    workspaceId,
+    workspaceName: ws?.name || "Workspace",
+    email,
+    role: role || "member",
+    token,
+    status: "pending",
+    invitedBy: "usr_demo",
+    invitedByName: "Demo User",
+    expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+    createdAt: new Date().toISOString(),
+  };
+
+  store.invitations = [inv, ...(store.invitations || [])];
+
+  addNotification({
+    title: `Invitation created for ${email}`,
+    description: `Invite link generated for role: ${role}.`,
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  logActivity({
+    type: "invitation_sent",
+    title: `Invited ${email} to ${ws?.name || "workspace"}`,
+    description: `Role: ${role}.`,
+    href: `/workspaces/${workspaceId}`,
+  });
+
+  saveStore(store);
+  return inv;
+}
+
+export function revokeWorkspaceInvitation(invitationId: string): boolean {
+  const store = getStore();
+  store.invitations = (store.invitations || []).filter((i) => i.id !== invitationId && i.token !== invitationId);
+  saveStore(store);
+  return true;
+}
+
+export function acceptWorkspaceInvitation(token: string, user?: any): any {
+  const store = getStore();
+  const inv = (store.invitations || []).find((i) => i.token === token);
+  if (!inv) return null;
+
+  inv.status = "accepted";
+  const ws = store.workspaces.find((w) => w.id === inv.workspaceId);
+
+  // Add user to workspace members
+  if (inv.workspaceId) {
+    if (!store.workspaceMembers[inv.workspaceId]) store.workspaceMembers[inv.workspaceId] = [];
+    const exists = store.workspaceMembers[inv.workspaceId].some((m) => m.userEmail === inv.email || m.userId === user?.id);
+    if (!exists) {
+      store.workspaceMembers[inv.workspaceId].push({
+        id: `mem_${Date.now()}`,
+        workspaceId: inv.workspaceId,
+        userId: user?.id || `usr_${Math.random().toString(36).substring(2, 8)}`,
+        role: inv.role || "member",
+        joinedAt: new Date().toISOString(),
+        userName: user?.name || inv.email.split("@")[0],
+        userEmail: inv.email,
+        userAvatar: user?.avatar || DEMO_USER.avatar,
+      });
+      if (ws) ws.memberCount = store.workspaceMembers[inv.workspaceId].length;
+    }
+  }
+
+  logActivity({
+    type: "member_joined",
+    title: `Joined workspace "${ws?.name || "Workspace"}"`,
+    description: `Accepted invite as ${inv.role}.`,
+    href: `/workspaces/${inv.workspaceId}`,
+  });
+
+  addNotification({
+    title: `Welcome to ${ws?.name || "Workspace"}!`,
+    description: "You have successfully joined the team workspace.",
+    href: `/workspaces/${inv.workspaceId}`,
+  });
+
+  saveStore(store);
+
+  // Switch active workspace
+  if (typeof window !== "undefined" && inv.workspaceId) {
+    localStorage.setItem("codeatlas_active_workspace_id", inv.workspaceId);
+    window.dispatchEvent(new CustomEvent("codeatlas:workspace-changed", { detail: { workspaceId: inv.workspaceId } }));
+  }
+
+  return { invitation: inv, workspace: ws };
+}
+
+export function createDiscussion(workspaceId: string, thread: any): any {
+  const store = getStore();
+  if (!store.discussions[workspaceId]) store.discussions[workspaceId] = [];
+
+  const newThread = {
+    id: `disc_${Date.now()}`,
+    workspaceId,
+    title: thread.title,
+    body: thread.body,
+    repositoryId: thread.repositoryId || "sample-project",
+    filePath: thread.filePath || "",
+    line: thread.line || undefined,
+    authorId: "usr_demo",
+    authorName: "Demo User",
+    authorAvatar: DEMO_USER.avatar,
+    status: "open",
+    createdAt: new Date().toISOString(),
+    replies: [],
+    reactions: {},
+  };
+
+  store.discussions[workspaceId].unshift(newThread);
+
+  logActivity({
+    type: "discussion_created",
+    title: `Started discussion: "${thread.title}"`,
+    description: `Thread opened on ${thread.filePath || "workspace"}.`,
+    href: `/workspaces/${workspaceId}?tab=discussions`,
+  });
+
+  saveStore(store);
+  return newThread;
+}
+
+export function replyToDiscussion(workspaceId: string, threadId: string, replyText: string): any {
+  const store = getStore();
+  const list = store.discussions[workspaceId] || [];
+  const thread = list.find((t) => t.id === threadId);
+  if (!thread) return null;
+
+  const reply = {
+    id: `rep_${Date.now()}`,
+    authorId: "usr_demo",
+    authorName: "Demo User",
+    authorAvatar: DEMO_USER.avatar,
+    body: replyText,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (!thread.replies) thread.replies = [];
+  thread.replies.push(reply);
+
+  saveStore(store);
+  return reply;
+}
+
+export function reactToDiscussion(workspaceId: string, threadId: string, emoji: string, userId: string = "usr_demo"): any {
+  const store = getStore();
+  const list = store.discussions[workspaceId] || [];
+  const thread = list.find((t) => t.id === threadId);
+  if (!thread) return null;
+
+  if (!thread.reactions) thread.reactions = {};
+  if (!thread.reactions[emoji]) thread.reactions[emoji] = [];
+
+  if (thread.reactions[emoji].includes(userId)) {
+    thread.reactions[emoji] = thread.reactions[emoji].filter((u: string) => u !== userId);
+  } else {
+    thread.reactions[emoji].push(userId);
+  }
+
+  saveStore(store);
+  return thread.reactions;
+}
+
+export function toggleDiscussionStatus(workspaceId: string, threadId: string): any {
+  const store = getStore();
+  const list = store.discussions[workspaceId] || [];
+  const thread = list.find((t) => t.id === threadId);
+  if (!thread) return null;
+
+  thread.status = thread.status === "open" ? "resolved" : "open";
+  saveStore(store);
+  return thread;
+}
+
+export function createAnnotation(workspaceId: string, annotation: any): any {
+  const store = getStore();
+  if (!store.workspaceAnnotations[workspaceId]) store.workspaceAnnotations[workspaceId] = [];
+
+  // Extract code snippet from repositoryFiles if available
+  let snippet = annotation.codeSnippet || "";
+  if (!snippet && annotation.repositoryId && annotation.filePath && store.repositoryFiles?.[annotation.repositoryId]?.[annotation.filePath]) {
+    const lines = store.repositoryFiles[annotation.repositoryId][annotation.filePath].code.split("\n");
+    const start = Math.max(0, (annotation.startLine || 1) - 1);
+    const end = Math.min(lines.length, annotation.endLine || start + 5);
+    snippet = lines.slice(start, end).join("\n");
+  }
+
+  const newAnno = {
+    id: `anno_${Date.now()}`,
+    workspaceId,
+    repositoryId: annotation.repositoryId || "sample-project",
+    filePath: annotation.filePath || "src/services/auth.ts",
+    startLine: Number(annotation.startLine) || 1,
+    endLine: Number(annotation.endLine) || 10,
+    symbolName: annotation.symbolName || "function",
+    category: annotation.category || "architecture",
+    title: annotation.title || "Code Note",
+    content: annotation.content || "",
+    codeSnippet: snippet,
+    tags: annotation.tags || ["note"],
+    authorId: "usr_demo",
+    authorName: "Demo User",
+    authorAvatar: DEMO_USER.avatar,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+
+  store.workspaceAnnotations[workspaceId].unshift(newAnno);
+
+  logActivity({
+    type: "annotation_added",
+    title: `Added code note on ${newAnno.filePath}`,
+    description: `Lines ${newAnno.startLine}-${newAnno.endLine}: ${newAnno.title}.`,
+    href: `/repositories/${newAnno.repositoryId}`,
+  });
+
+  saveStore(store);
+  return newAnno;
+}
+
+export function updateAnnotation(workspaceId: string, id: string, updates: Partial<any>): any {
+  const store = getStore();
+  const list = store.workspaceAnnotations[workspaceId] || [];
+  const index = list.findIndex((a) => a.id === id);
+  if (index === -1) return null;
+
+  const updated = {
+    ...list[index],
+    ...updates,
+    updatedAt: new Date().toISOString(),
+  };
+
+  store.workspaceAnnotations[workspaceId][index] = updated;
+  saveStore(store);
+  return updated;
+}
+
+export function deleteAnnotation(workspaceId: string, id: string): boolean {
+  const store = getStore();
+  const list = store.workspaceAnnotations[workspaceId] || [];
+  store.workspaceAnnotations[workspaceId] = list.filter((a) => a.id !== id);
+  saveStore(store);
+  return true;
+}
