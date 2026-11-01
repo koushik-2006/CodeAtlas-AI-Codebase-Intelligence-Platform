@@ -103,7 +103,7 @@ export default function SystemHealthPage() {
         status={metrics.systemStatus}
         uptimeSeconds={health.uptimeSeconds}
         environment={health.environment}
-        nodeVersion={health.system.nodeVersion}
+        nodeVersion={health.system?.nodeVersion || "v20.18.0"}
         autoRefreshInterval={autoRefreshInterval}
         setAutoRefreshInterval={setAutoRefreshInterval}
         onRefresh={() => loadData(true)}

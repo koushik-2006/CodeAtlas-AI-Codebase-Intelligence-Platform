@@ -269,7 +269,7 @@ function RefactoringStudioContent() {
               : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
         >
-          Quality Findings ({debtOverview?.findings.length || 0})
+          Quality Findings ({debtOverview?.findings?.length || 0})
         </button>
 
         <button
@@ -293,7 +293,7 @@ function RefactoringStudioContent() {
               : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
         >
-          History ({proposals.length})
+          History ({proposals?.length || 0})
         </button>
       </div>
 

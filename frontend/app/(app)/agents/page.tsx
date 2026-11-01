@@ -70,10 +70,11 @@ export default function AgentWorkspacePage() {
 
       const res = await apiClient.get<any>("/agents/runs", { params });
       const data = res.data || {};
-      if (res.success && data.runs) {
-        setRuns(data.runs || []);
-        if (data.runs?.length > 0 && !selectedRunId) {
-          setSelectedRunId(data.runs[0].id);
+      if (res.success) {
+        const runList = Array.isArray(data) ? data : (data.runs || (res as any).runs || []);
+        setRuns(runList);
+        if (runList.length > 0 && !selectedRunId) {
+          setSelectedRunId(runList[0].id);
         }
       }
     } catch (err: any) {
@@ -90,7 +91,7 @@ export default function AgentWorkspacePage() {
 
   // Periodic polling for active runs
   useEffect(() => {
-    const hasActiveRuns = runs.some((r) => r.status === "running" || r.status === "queued");
+    const hasActiveRuns = Array.isArray(runs) ? runs.some((r) => r.status === "running" || r.status === "queued") : false;
     if (!hasActiveRuns) return;
 
     const interval = setInterval(() => {
@@ -100,7 +101,7 @@ export default function AgentWorkspacePage() {
     return () => clearInterval(interval);
   }, [runs, fetchRuns]);
 
-  const selectedRun = runs.find((r) => r.id === selectedRunId) || (runs.length > 0 ? runs[0] : null);
+  const selectedRun = (Array.isArray(runs) ? runs : []).find((r) => r.id === selectedRunId) || (Array.isArray(runs) && runs.length > 0 ? runs[0] : null);
 
   const handleCreateRun = async (req: StartAgentRunRequest) => {
     const res = await apiClient.post<any>("/agents/runs", req);

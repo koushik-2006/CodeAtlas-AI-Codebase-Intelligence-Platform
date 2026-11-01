@@ -28,6 +28,7 @@
     "test:github-oauth": "tsx scripts/test-github-oauth.ts",
     "test:repo-ingestion": "tsx scripts/test-real-repo-ingestion.ts",
     "test:gemini": "tsx scripts/test-gemini-integration.ts",
+    "test:smoke": "tsx scripts/smoke-routes.ts",
     "test": "npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:nav-guard && npm run test:github-oauth && npm run test:repo-ingestion && npm run test:gemini && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase20 && npm run test:phase21",
     "test:all": "npm run lint && npm run typecheck && npm run build:vscode && npm run test:unit && npm run test:integration && npm run test:e2e && npm run test:google-auth && npm run test:auth-system && npm run test:nav-guard && npm run test:github-oauth && npm run test:gemini && npm run test:phase12 && npm run test:phase13 && npm run test:phase14 && npm run test:phase15 && npm run test:phase16 && npm run test:phase17 && npm run test:phase18 && npm run test:phase19 && npm run test:phase20 && npm run test:phase21 && npm run build"
   },
@@ -50,6 +51,7 @@
     "autoprefixer": "10.4.19",
     "eslint": "^8.57.0",
     "eslint-config-next": "^14.2.15",
+    "playwright": "^1.64.1",
     "postcss": "8.4.39",
     "tailwindcss": "3.4.6",
     "tsx": "^4.23.15",

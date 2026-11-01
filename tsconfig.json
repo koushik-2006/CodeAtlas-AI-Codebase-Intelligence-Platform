@@ -19,6 +19,19 @@
     "paths": {
       "@/*": [
         "./frontend/*"
+      ],
+      "firebase/ai": [
+        "./frontend/node_modules/@firebase/ai/dist/ai-public.d.ts"
+      ],
+      "firebase/app-check": [
+        "./frontend/node_modules/@firebase/app-check/dist/app-check-public.d.ts"
+      ],
+      "firebase/auth": [
+        "./frontend/node_modules/firebase/node_modules/@firebase/auth/dist/auth-public.d.ts",
+        "./frontend/node_modules/@firebase/auth/dist/auth-public.d.ts"
+      ],
+      "firebase/app": [
+        "./frontend/node_modules/@firebase/app/dist/app-public.d.ts"
       ]
     },
     "allowJs": true

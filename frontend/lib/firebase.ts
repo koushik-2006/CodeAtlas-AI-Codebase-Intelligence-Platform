@@ -95,10 +95,10 @@ export function getFirebaseAppCheck(): AppCheck | null {
     }
 
     const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
-    if (siteKey || isLocalhost) {
+    if (siteKey) {
       try {
         cachedAppCheck = initializeAppCheck(app, {
-          provider: new ReCaptchaV3Provider(siteKey || "6Le-wvkSAAAAAPBMRTvw0Q4Muexq9bi0DJwx_mJ-"),
+          provider: new ReCaptchaV3Provider(siteKey),
           isTokenAutoRefreshEnabled: true,
         });
       } catch (err) {

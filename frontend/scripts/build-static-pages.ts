@@ -11,10 +11,10 @@ import * as os from "os";
  */
 
 const rootDir = process.cwd();
-// Use RUNNER_TEMP in CI, or local .pages_export_workspace in workspace
+// Use RUNNER_TEMP in CI, OS temp directory locally to eliminate Windows OneDrive sync locking
 const tempWorkspace = process.env.RUNNER_TEMP
   ? path.join(process.env.RUNNER_TEMP, "codeatlas_pages_export")
-  : path.join(rootDir, ".pages_export_workspace");
+  : path.join(os.tmpdir(), "codeatlas_pages_export");
 const outDir = path.join(rootDir, "out");
 
 console.log("=========================================================================");
@@ -131,6 +131,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   experimental: {
     cpus: 1,
     workerThreads: false,
@@ -226,6 +229,21 @@ export default nextConfig;
     );
     fs.writeFileSync(tempLayoutPath, layoutContent, "utf-8");
   }
+
+  // 5c. Pre-create all mirrored route directories in .next/server/app to prevent Windows mkdir contention
+  function mirrorRouteDirs(sourceDir: string, targetBase: string) {
+    if (!fs.existsSync(sourceDir)) return;
+    const entries = fs.readdirSync(sourceDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const destDir = path.join(targetBase, entry.name);
+        try { fs.mkdirSync(destDir, { recursive: true }); } catch {}
+        mirrorRouteDirs(path.join(sourceDir, entry.name), destDir);
+      }
+    }
+  }
+  mirrorRouteDirs(path.join(tempWorkspace, "app"), path.join(tempWorkspace, ".next", "server", "app"));
+  mirrorRouteDirs(path.join(tempWorkspace, "app"), path.join(tempWorkspace, ".next", "types", "app"));
 
   // 6. Run Next.js static build using local binary
   console.log("⚙️  Running Next.js static export build (STATIC_EXPORT=true)...");

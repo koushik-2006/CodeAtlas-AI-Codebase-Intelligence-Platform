@@ -355,7 +355,7 @@ function DebugContent() {
                   <TrendingUp className="w-3.5 h-3.5" />
                   Hypotheses & Root Cause
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--bg-primary)] font-mono">
-                    {activeInvestigation.hypotheses.length}
+                    {activeInvestigation.hypotheses?.length || 0}
                   </span>
                 </button>
 
@@ -371,7 +371,7 @@ function DebugContent() {
                   <Wrench className="w-3.5 h-3.5" />
                   Fix Suggestions & Patch
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--bg-primary)] font-mono">
-                    {activeInvestigation.suggestedFixes.length}
+                    {(activeInvestigation.suggestedFixes || (activeInvestigation as any).proposedFixes || []).length}
                   </span>
                 </button>
 
@@ -387,7 +387,7 @@ function DebugContent() {
                   <FlaskConical className="w-3.5 h-3.5" />
                   Test Recommendations
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--bg-primary)] font-mono">
-                    {activeInvestigation.testRecommendations.length}
+                    {activeInvestigation.testRecommendations?.length || 0}
                   </span>
                 </button>
 
@@ -403,7 +403,7 @@ function DebugContent() {
                   <MessageSquare className="w-3.5 h-3.5" />
                   Investigation Q&A
                   <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--bg-primary)] font-mono">
-                    {activeFollowUps.length}
+                    {activeFollowUps?.length || 0}
                   </span>
                 </button>
               </div>
@@ -498,12 +498,12 @@ function DebugContent() {
                     </div>
                   </div>
 
-                  {activeInvestigation.suggestedFixes.length === 0 ? (
+                  {(activeInvestigation.suggestedFixes || (activeInvestigation as any).proposedFixes || []).length === 0 ? (
                     <div className="text-center py-8 text-xs text-[var(--text-secondary)] bg-[var(--bg-card)] border border-[var(--border-color)] rounded-xl">
                       No repair suggestions available. Verify source files in indexed repository.
                     </div>
                   ) : (
-                    activeInvestigation.suggestedFixes.map((fix) => (
+                    (activeInvestigation.suggestedFixes || (activeInvestigation as any).proposedFixes || []).map((fix: any) => (
                       <FixSuggestionCard
                         key={fix.id}
                         fix={fix}

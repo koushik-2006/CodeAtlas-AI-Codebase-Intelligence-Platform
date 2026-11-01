@@ -81,7 +81,7 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
             AFFECTED APIS
           </span>
           <p className="mt-3 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">
-            {result.affectedEndpoints.length} Routes
+            {result.affectedEndpoints?.length || 0} Routes
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
             DIRECT CALLERS
           </span>
           <p className="mt-3 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">
-            {result.directlyDependent.length} Components
+            {result.directlyDependent?.length || 0} Components
           </p>
         </div>
 
@@ -109,7 +109,7 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
             TESTS TO RE-RUN
           </span>
           <p className="mt-3 text-2xl sm:text-3xl font-black text-[var(--text-primary)]">
-            {result.testsToRerun.length} Suites
+            {result.testsToRerun?.length || 0} Suites
           </p>
         </div>
       </div>
@@ -228,12 +228,12 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
                 Directly Dependent Callers
               </h4>
               <span className="font-mono text-xs text-[var(--text-secondary)]">
-                {result.directlyDependent.length} found
+                {result.directlyDependent?.length || 0} found
               </span>
             </div>
 
             <div className="space-y-2">
-              {result.directlyDependent.map((item) => (
+              {(result.directlyDependent || []).map((item) => (
                 <div
                   key={item.id}
                   className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-page)] flex items-start justify-between gap-3 text-xs"
@@ -263,7 +263,7 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
           </div>
 
           {/* 2. Potentially Affected Downstream Components */}
-          {result.downstreamAffected.length > 0 && (
+          {(result.downstreamAffected?.length || 0) > 0 && (
             <div className="pt-4 border-t border-[var(--border-color)]">
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-sm font-bold flex items-center gap-2 text-[var(--text-primary)]">
@@ -271,12 +271,12 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
                   Potentially Affected Downstream
                 </h4>
                 <span className="font-mono text-xs text-[var(--text-secondary)]">
-                  {result.downstreamAffected.length} services
+                  {result.downstreamAffected?.length || 0} services
                 </span>
               </div>
 
               <div className="space-y-2">
-                {result.downstreamAffected.map((item) => (
+                {(result.downstreamAffected || []).map((item) => (
                   <div
                     key={item.id}
                     className="p-3 rounded-xl border border-[var(--border-color)] bg-[var(--bg-page)] flex items-start justify-between gap-3 text-xs"
@@ -304,14 +304,14 @@ export function ImpactResults({ result, repositoryId = "sample-project" }: Impac
           }`}
         >
           {/* 3. Related APIs */}
-          {result.affectedEndpoints.length > 0 && (
+          {(result.affectedEndpoints?.length || 0) > 0 && (
             <div>
               <h4 className="text-sm font-bold flex items-center gap-2 text-[var(--text-primary)] mb-3">
                 <Globe className="w-4 h-4 text-blue-500" />
                 Related Network APIs
               </h4>
               <div className="space-y-2">
-                {result.affectedEndpoints.map((ep, idx) => (
+                {(result.affectedEndpoints || []).map((ep, idx) => (
                   <div
                     key={idx}
                     className="p-2.5 rounded-xl border border-[var(--border-color)] bg-[var(--bg-page)] flex items-center justify-between text-xs"

@@ -1,6 +1,7 @@
 import { ApiResponse } from "@/types/api";
 import { AuthUser } from "@/types/auth";
 import { SAMPLE_REPOSITORIES_DATA } from "@/lib/constants";
+import { getStore as getCentralStore, saveStore as saveCentralStore, resetStore as resetCentralStore } from "./store";
 import { SAMPLE_PROJECT_TREE, SAMPLE_PROJECT_CODE } from "@/lib/sample-repository-files";
 import { DEMO_REPOSITORY_INFO, DEMO_TRACE_STEPS, DEMO_GROUNDED_QUERIES, DEMO_CHANGE_IMPACT, DEMO_SYMBOL_RESOLUTION } from "./demo-data";
 
@@ -615,6 +616,21 @@ function getInitialStore(): DemoStore {
           recommendedAction: "Verify environment configurations at application startup.",
         },
       ],
+      suggestedFixes: [
+        {
+          id: "fix-1",
+          hypothesisId: "hypo-1",
+          title: "Add null guard for session token and throw descriptive AuthError",
+          description: "Prevents undefined property dereference and returns an actionable error message to the client form.",
+          filePath: "src/services/auth.ts",
+          startLine: 27,
+          endLine: 29,
+          diff: `@@ -27,3 +27,6 @@\n   const session = await issueSessionToken(user);\n+  if (!session || !session.token) {\n+    throw new AuthError('Failed to issue session token. Account may be inactive.');\n+  }\n   return session.token;`,
+          explanation: "Guards against undefined `session` and surfaces clean business exception to UI.",
+          riskLevel: "low",
+          isApplied: false,
+        },
+      ],
       proposedFixes: [
         {
           id: "fix-1",
@@ -656,6 +672,26 @@ function getInitialStore(): DemoStore {
     criticalFindingsCount: 1,
     warningFindingsCount: 3,
     infoFindingsCount: 2,
+    findings: [
+      {
+        id: "find-debt-1",
+        title: "Cyclomatic complexity of 12 in loginUser() exceeds threshold",
+        category: "excessive_complexity",
+        categoryLabel: "Excessive Complexity",
+        severity: "warning",
+        filePath: "src/services/auth.ts",
+        symbolName: "loginUser",
+        lineRange: { start: 18, end: 42 },
+        detectionMethod: "ast_metric",
+        isVerifiedMetric: true,
+        metricValue: 12,
+        threshold: 10,
+        supportingEvidence: ["4 nested if/else control flow branches"],
+        impactRationale: "Increases risk of regression when changing auth rules.",
+        suggestedAction: "Extract input assertion into assertValidCredentials.",
+        suggestedRefactoringOp: "extract_function",
+      },
+    ],
     categories: [
       { category: "excessive_complexity", label: "Cyclomatic Complexity", count: 2, severity: "warning" },
       { category: "missing_error_handling", label: "Missing Error Guards", count: 1, severity: "critical" },
@@ -897,28 +933,17 @@ function getInitialStore(): DemoStore {
 
 let memoryStore: DemoStore | null = null;
 
+export function resetStore(): void {
+  resetCentralStore();
+  memoryStore = null;
+}
+
 function getStore(): DemoStore {
-  if (memoryStore) return memoryStore;
-  if (typeof window !== "undefined") {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        memoryStore = JSON.parse(saved);
-        return memoryStore!;
-      }
-    } catch {}
-  }
-  memoryStore = getInitialStore();
-  saveStore();
-  return memoryStore;
+  return getCentralStore() as any;
 }
 
 function saveStore() {
-  if (typeof window !== "undefined" && memoryStore) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryStore));
-    } catch {}
-  }
+  saveCentralStore(getStore() as any);
 }
 
 /**
@@ -1561,7 +1586,8 @@ export async function handleMockRequest(
       stackTrace: body?.stackTrace || "Error: Crash occurred at runtime",
       parsedFrames: store.debugInvestigations[0].parsedFrames,
       hypotheses: store.debugInvestigations[0].hypotheses,
-      proposedFixes: store.debugInvestigations[0].proposedFixes,
+      suggestedFixes: store.debugInvestigations[0]?.proposedFixes || [],
+      proposedFixes: store.debugInvestigations[0]?.proposedFixes || [],
       testRecommendations: store.debugInvestigations[0].testRecommendations,
       createdAt: timestamp,
       status: "analyzed",
@@ -1651,7 +1677,7 @@ export async function handleMockRequest(
   }
 
   if (cleanPath === "/api/impact/analyze") {
-    await delay(500);
+    await delay(300);
     return {
       success: true,
       data: {
@@ -1663,6 +1689,40 @@ export async function handleMockRequest(
         affectedComponents: [{ name: "LoginForm.tsx", file: "src/components/LoginForm.tsx", callerLine: 28 }],
         affectedServices: [{ name: "UserService", file: "src/services/auth.ts", line: 38 }],
         testsToRerun: [{ name: "testLoginSuccess", file: "tests/auth.test.ts", line: 18, status: "needs-update" }],
+        directlyDependent: [
+          {
+            id: "dep-1",
+            name: "LoginForm.tsx",
+            type: "component",
+            file: "src/components/LoginForm.tsx",
+            line: 28,
+            reason: "Directly calls loginUser() in form submission callback",
+            severity: "High",
+            relationship: "Caller",
+          },
+          {
+            id: "dep-2",
+            name: "tests/auth.test.ts",
+            type: "test",
+            file: "tests/auth.test.ts",
+            line: 18,
+            reason: "Asserts expected AuthResult schema and token issuance",
+            severity: "High",
+            relationship: "Test Suite",
+          },
+        ],
+        downstreamAffected: [
+          {
+            id: "down-1",
+            name: "UserService",
+            type: "service",
+            file: "src/services/auth.ts",
+            line: 38,
+            reason: "Called by loginUser to resolve user roles and session context",
+            severity: "Medium",
+            relationship: "Downstream Service",
+          },
+        ],
         recommendation: "Modifying loginUser parameter signature will immediately invalidate LoginForm.tsx and auth.test.ts.",
       },
       timestamp,
@@ -1673,28 +1733,41 @@ export async function handleMockRequest(
   // 8. ARCHITECTURE GRAPH & PATHS
   // ---------------------------------------------------------------------------
   if (cleanPath === "/api/architecture/graph") {
+    const nodes = [
+      { id: "node-login-form", name: "LoginForm", label: "LoginForm", type: "Source file", file: "src/components/LoginForm.tsx", line: 1, callers: ["Browser UI"], callees: ["POST /auth", "validateEmail()"], color: "#6C4DFF" },
+      { id: "node-api-auth", name: "POST /auth", label: "POST /auth", type: "API endpoint", file: "src/services/auth.ts", line: 18, callers: ["LoginForm"], callees: ["loginUser()"], color: "#00D69F" },
+      { id: "node-login-user", name: "loginUser()", label: "loginUser()", type: "Function", file: "src/services/auth.ts", line: 18, callers: ["POST /auth"], callees: ["validateEmail()", "UserService"], color: "#3178C6" },
+      { id: "node-validate-email", name: "validateEmail()", label: "validateEmail()", type: "Function", file: "src/utils/validation.ts", line: 4, callers: ["loginUser()", "LoginForm"], callees: [], color: "#FFA114" },
+      { id: "node-user-service", name: "UserService", label: "UserService", type: "Service", file: "src/services/auth.ts", line: 44, callers: ["loginUser()"], callees: ["db.users"], color: "#FF5E7E" },
+      { id: "node-db-users", name: "users (store)", label: "users (store)", type: "Database", file: "src/services/auth.ts", line: 44, callers: ["UserService"], callees: [], color: "#A0AEC0" },
+      { id: "node-auth-test", name: "tests/auth.test.ts", label: "tests/auth.test.ts", type: "Test suite", file: "tests/auth.test.ts", line: 1, callers: [], callees: ["loginUser()"], color: "#00E5FF" },
+    ];
+    const edges = [
+      { id: "e1", source: "node-login-form", target: "node-api-auth", label: "API calls", type: "API calls" },
+      { id: "e2", source: "node-login-form", target: "node-validate-email", label: "Function calls", type: "Function calls" },
+      { id: "e3", source: "node-api-auth", target: "node-login-user", label: "Function calls", type: "Function calls" },
+      { id: "e4", source: "node-login-user", target: "node-user-service", label: "Function calls", type: "Function calls" },
+      { id: "e5", source: "node-user-service", target: "node-db-users", label: "Data access", type: "Data access" },
+      { id: "e6", source: "node-auth-test", target: "node-login-user", label: "Test coverage", type: "Test coverage" },
+    ];
+    const metrics = {
+      totalNodes: nodes.length,
+      totalEdges: edges.length,
+      nodeTypeBreakdown: { Function: 2, "Source file": 1, "API endpoint": 1, Service: 1, Database: 1, "Test suite": 1 },
+      circularDependencies: [],
+      isolatedNodes: [],
+      centralNodes: [{ id: "node-login-user", name: "loginUser()", connections: 4 }],
+      maxDepth: 3,
+    };
     return {
       success: true,
       data: {
         repositoryId: "sample-project",
-        nodes: [
-          { id: "node-login-form", name: "LoginForm", type: "Source file", file: "src/components/LoginForm.tsx", line: 1, callers: ["Browser UI"], callees: ["POST /auth", "validateEmail()"], color: "#6C4DFF" },
-          { id: "node-api-auth", name: "POST /auth", type: "API endpoint", file: "src/services/auth.ts", line: 18, callers: ["LoginForm"], callees: ["loginUser()"], color: "#00D69F" },
-          { id: "node-login-user", name: "loginUser()", type: "Function", file: "src/services/auth.ts", line: 18, callers: ["POST /auth"], callees: ["validateEmail()", "UserService"], color: "#3178C6" },
-          { id: "node-validate-email", name: "validateEmail()", type: "Function", file: "src/utils/validation.ts", line: 4, callers: ["loginUser()", "LoginForm"], callees: [], color: "#FFA114" },
-          { id: "node-user-service", name: "UserService", type: "Service", file: "src/services/auth.ts", line: 44, callers: ["loginUser()"], callees: ["db.users"], color: "#FF5E7E" },
-          { id: "node-db-users", name: "users (store)", type: "Database", file: "src/services/auth.ts", line: 44, callers: ["UserService"], callees: [], color: "#A0AEC0" },
-          { id: "node-auth-test", name: "tests/auth.test.ts", type: "Test suite", file: "tests/auth.test.ts", line: 1, callers: [], callees: ["loginUser()"], color: "#00E5FF" },
-        ],
-        edges: [
-          { id: "e1", source: "node-login-form", target: "node-api-auth", label: "API calls", type: "API calls" },
-          { id: "e2", source: "node-login-form", target: "node-validate-email", label: "Function calls", type: "Function calls" },
-          { id: "e3", source: "node-api-auth", target: "node-login-user", label: "Function calls", type: "Function calls" },
-          { id: "e4", source: "node-login-user", target: "node-user-service", label: "Function calls", type: "Function calls" },
-          { id: "e5", source: "node-user-service", target: "node-db-users", label: "Data access", type: "Data access" },
-          { id: "e6", source: "node-auth-test", target: "node-login-user", label: "Test coverage", type: "Test coverage" },
-        ],
+        nodes,
+        edges,
+        metrics,
       },
+      metrics,
       timestamp,
     };
   }
@@ -1766,15 +1839,63 @@ export async function handleMockRequest(
   }
 
   if (cleanPath === "/api/multi-repo/search") {
+    const q = searchParams.get("q") || "validateEmail";
+    const searchItems: any[] = [
+      {
+        id: "res-1",
+        repositoryId: "sample-project",
+        repositoryName: "demo-auth-service",
+        revision: "a8f7b2c",
+        title: "validateEmail",
+        subtitle: "src/utils/validation.ts",
+        category: "symbol",
+        filePath: "src/utils/validation.ts",
+        line: 4,
+        snippet: "export function validateEmail(email: string): boolean",
+        matchType: "exact_symbol",
+        badge: "TypeScript",
+        href: "/repositories/sample-project?file=src/utils/validation.ts&line=4",
+      },
+      {
+        id: "res-2",
+        repositoryId: "shared-core-lib",
+        repositoryName: "shared-core-lib",
+        revision: "e7d1a49",
+        title: "validateEmail",
+        subtitle: "src/validators.ts",
+        category: "symbol",
+        filePath: "src/validators.ts",
+        line: 12,
+        snippet: "export const validateEmail = (val: string) => /.../.test(val)",
+        matchType: "exact_symbol",
+        badge: "TypeScript",
+        href: "/repositories/shared-core-lib?file=src/validators.ts&line=12",
+      },
+    ];
+    const groupedByRepo = {
+      "sample-project": {
+        repoName: "demo-auth-service",
+        count: 1,
+        results: [searchItems[0]],
+      },
+      "shared-core-lib": {
+        repoName: "shared-core-lib",
+        count: 1,
+        results: [searchItems[1]],
+      },
+    };
     return {
       success: true,
       data: {
-        query: searchParams.get("q") || "validateEmail",
-        totalMatches: 3,
-        results: [
-          { repositoryId: "sample-project", repositoryName: "demo-auth-service", file: "src/utils/validation.ts", line: 4, symbol: "validateEmail", snippet: "export function validateEmail(email: string): boolean" },
-          { repositoryId: "shared-core-lib", repositoryName: "shared-core-lib", file: "src/validators.ts", line: 12, symbol: "validateEmail", snippet: "export const validateEmail = (val: string) => /.../.test(val)" },
-        ],
+        query: q,
+        total: searchItems.length,
+        results: searchItems,
+        groupedByRepo,
+        groupedByCategory: { symbol: searchItems.length },
+        categories: [{ category: "symbol", label: "Symbols", count: searchItems.length }],
+        limit: 20,
+        offset: 0,
+        searchMethod: "exact_and_ast_index",
       },
       timestamp,
     };
@@ -1946,8 +2067,14 @@ export async function handleMockRequest(
     return {
       status: "healthy",
       service: "codeatlas-static-demo",
+      environment: "demo-static",
       uptimeSeconds: 86400,
       timestamp,
+      system: {
+        nodeVersion: "v20.18.0",
+        platform: "web",
+        memoryUsageMb: 128,
+      },
     };
   }
 
@@ -2121,6 +2248,26 @@ function initialDebtOverview(store: DemoStore) {
     criticalFindingsCount: 1,
     warningFindingsCount: 3,
     infoFindingsCount: 2,
+    findings: [
+      {
+        id: "find-debt-1",
+        title: "Cyclomatic complexity of 12 in loginUser() exceeds threshold",
+        category: "excessive_complexity",
+        categoryLabel: "Excessive Complexity",
+        severity: "warning",
+        filePath: "src/services/auth.ts",
+        symbolName: "loginUser",
+        lineRange: { start: 18, end: 42 },
+        detectionMethod: "ast_metric",
+        isVerifiedMetric: true,
+        metricValue: 12,
+        threshold: 10,
+        supportingEvidence: ["4 nested if/else control flow branches"],
+        impactRationale: "Increases risk of regression when changing auth rules.",
+        suggestedAction: "Extract input assertion into assertValidCredentials.",
+        suggestedRefactoringOp: "extract_function",
+      },
+    ],
     categories: [
       { category: "excessive_complexity", label: "Cyclomatic Complexity", count: 2, severity: "warning" },
       { category: "missing_error_handling", label: "Missing Error Guards", count: 1, severity: "critical" },

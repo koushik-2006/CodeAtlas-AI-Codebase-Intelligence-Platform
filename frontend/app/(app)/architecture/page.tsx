@@ -129,7 +129,7 @@ function ArchitectureContent() {
             <Zap className="w-3.5 h-3.5 text-teal-500" />
             <strong className="text-[var(--text-primary)]">{edges.length}</strong> Relationships
           </span>
-          {metrics && metrics.circularDependencies.length > 0 && (
+          {metrics && metrics.circularDependencies && metrics.circularDependencies.length > 0 && (
             <span className="inline-flex items-center gap-1 text-amber-500 font-bold">
               <AlertCircle className="w-3.5 h-3.5" />
               {metrics.circularDependencies.length} Cycle(s)

@@ -499,7 +499,7 @@ export function ArchitectureCanvas({
                     fontWeight="bold"
                     fontFamily="sans-serif"
                   >
-                    {node.label.length > 18 ? node.label.slice(0, 16) + "..." : node.label}
+                    {(node.label || node.name || node.id || "").length > 18 ? (node.label || node.name || node.id || "").slice(0, 16) + "..." : (node.label || node.name || node.id || "")}
                   </text>
                 </g>
               );

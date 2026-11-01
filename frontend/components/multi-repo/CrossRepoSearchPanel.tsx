@@ -143,14 +143,14 @@ export function CrossRepoSearchPanel({
           <div className="flex items-center justify-between text-xs text-[#6E6A8A] dark:text-[#8E95A8] px-1">
             <span>
               Found <strong>{searchResults.total}</strong> results across{" "}
-              {Object.keys(searchResults.groupedByRepo).length} repositories
+              {searchResults.groupedByRepo ? Object.keys(searchResults.groupedByRepo).length : (searchResults.results?.length ? 1 : 0)} repositories
             </span>
             {searchResults.staleNotice && (
               <span className="text-amber-500 font-medium">{searchResults.staleNotice}</span>
             )}
           </div>
 
-          {searchResults.results.length === 0 ? (
+          {(!searchResults.results || searchResults.results.length === 0) ? (
             <div className="p-8 text-center bg-[#FFFFFF] dark:bg-[#0D111A] border border-[#EAE6FD] dark:border-[#1E2638] rounded-2xl">
               <p className="text-sm font-medium text-[#19143D] dark:text-[#F3F5FA]">
                 No matching results found for &quot;{searchQuery}&quot;

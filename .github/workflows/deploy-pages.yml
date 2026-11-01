@@ -84,6 +84,12 @@ jobs:
           fi
           echo "Static export verified with $(ls -1 frontend/out | wc -l) top-level entries."
 
+      - name: Run Playwright Route Smoke Tests
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium
+          npm run test:smoke
+
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
         with:
