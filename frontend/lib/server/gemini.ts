@@ -71,10 +71,18 @@ export class GeminiService {
   private apiKey: string;
   private modelName: string;
 
+  private normalizeModel(raw?: string): string {
+    const trimmed = (raw || "").trim();
+    if (!trimmed || trimmed === "gemini-1.5-flash" || trimmed === "gemini-2.5-flash" || trimmed === "gemini-1.5-pro") {
+      return "gemini-3.5-flash";
+    }
+    return trimmed;
+  }
+
   constructor() {
     loadEnvFallback();
     this.apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || "").trim();
-    this.modelName = (process.env.GEMINI_MODEL || "gemini-1.5-flash").trim();
+    this.modelName = this.normalizeModel(process.env.GEMINI_MODEL);
 
     if (this.isConfigured()) {
       try {
@@ -92,7 +100,7 @@ export class GeminiService {
   reloadConfiguration(): void {
     loadEnvFallback();
     this.apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || "").trim();
-    this.modelName = (process.env.GEMINI_MODEL || "gemini-1.5-flash").trim();
+    this.modelName = this.normalizeModel(process.env.GEMINI_MODEL);
 
     if (this.isConfigured()) {
       try {
@@ -124,7 +132,7 @@ export class GeminiService {
    * Returns the active Gemini model name.
    */
   getModelName(): string {
-    return this.modelName || process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    return this.normalizeModel(this.modelName || process.env.GEMINI_MODEL);
   }
 
   /**
@@ -146,18 +154,27 @@ export class GeminiService {
     this.reloadConfiguration();
     this.assertConfigured();
 
-    const model = this.getModelName();
+    const preferredModel = this.getModelName();
+    const candidateModels = [
+      preferredModel,
+      preferredModel !== "gemini-3.5-flash" ? "gemini-3.5-flash" : "gemini-3.5-flash-lite",
+      "gemini-3.5-flash-lite",
+    ].filter((m, i, arr) => arr.indexOf(m) === i);
+
     const correlationId = options.correlationId || tracer.getOrCreateCorrelationId();
-    const spanContext = tracer.startSpan("gemini.generate_content", { model }, correlationId);
+    const spanContext = tracer.startSpan("gemini.generate_content", { model: preferredModel }, correlationId);
     const t0 = performance.now();
+    let usedModel = preferredModel;
 
     try {
       const result = await aiCircuitBreaker.execute(async () => {
-        return await withRetry(
-          async () => {
+        let lastErr: any = null;
+        for (const candidate of candidateModels) {
+          try {
+            usedModel = candidate;
             const client = this.client || new GoogleGenAI({ apiKey: this.apiKey });
             const response = await client.models.generateContent({
-              model,
+              model: candidate,
               contents: options.prompt,
               config: {
                 systemInstruction: options.systemInstruction,
@@ -165,11 +182,18 @@ export class GeminiService {
                 maxOutputTokens: options.maxOutputTokens ?? 2048,
               },
             });
-
             return response;
-          },
-          { maxRetries: 2, initialBackoffMs: 300 }
-        );
+          } catch (err: any) {
+            lastErr = err;
+            const msg = (err?.message || "").toLowerCase();
+            // If model is unsupported, not found, or temporary high demand (503), try next candidate
+            if (msg.includes("404") || msg.includes("503") || msg.includes("not found") || msg.includes("demand")) {
+              continue;
+            }
+            throw err;
+          }
+        }
+        throw lastErr || new Error("All candidate Gemini models failed to generate content.");
       });
 
       const durationMs = Math.max(1, Math.round(performance.now() - t0));
@@ -182,15 +206,15 @@ export class GeminiService {
         durationMs,
         success: true,
         provider: "google_gemini",
-        model,
+        model: usedModel,
         tokensEstimated: estimatedTokens,
       });
 
-      spanContext.end("ok", { durationMs, estimatedTokens });
+      spanContext.end("ok", { durationMs, estimatedTokens, model: usedModel });
 
       return {
         text: generatedText,
-        model,
+        model: usedModel,
         tokensEstimated: estimatedTokens,
         durationMs,
       };
@@ -209,13 +233,13 @@ export class GeminiService {
         durationMs,
         success: false,
         provider: "google_gemini",
-        model,
+        model: usedModel,
         errorType,
       });
 
       spanContext.end("error", { error: sanitizedMessage });
 
-      throw this.classifyError(sanitizedMessage, model);
+      throw this.classifyError(sanitizedMessage, usedModel);
     }
   }
 

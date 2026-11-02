@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useTheme } from "@/hooks/useTheme";
@@ -37,6 +37,7 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
+  Loader2,
 } from "lucide-react";
 
 type MainViewTab = "code" | "report" | "onboarding" | "learning" | "workflow" | "health";
@@ -328,33 +329,42 @@ function RepositoryExplorerContent() {
     });
   }, [repoId, selectedFilePath]);
 
-  // Fetch Phase 12 intelligence data
-  useEffect(() => {
-    codeIntelligenceService.getOnboardingData(repoId).then((data) => {
-      if (data) {
-        setOnboardingOverview(data.overview);
-        setOnboardingJourney(data.journey);
-      }
-    });
-
-    codeIntelligenceService.getWorkflowTrace(repoId, selectedEntryPoint).then((data) => {
-      if (data) {
-        setWorkflowData(data);
-      }
-    });
-
-    codeIntelligenceService.getLearningPath(repoId).then((data) => {
-      if (data) {
-        setLearningPath(data);
-      }
-    });
-
-    codeIntelligenceService.getHealthInsights(repoId).then((data) => {
-      if (data) {
-        setHealthScore(data);
-      }
-    });
+  // Fetch Phase 12 intelligence data with proactive caching and immediate tab loading
+  const fetchTabIntelligence = useCallback((tab?: MainViewTab) => {
+    if (!tab || tab === "report" || tab === "onboarding") {
+      codeIntelligenceService.getOnboardingData(repoId).then((data) => {
+        if (data) {
+          setOnboardingOverview(data.overview);
+          setOnboardingJourney(data.journey);
+        }
+      });
+    }
+    if (!tab || tab === "workflow") {
+      codeIntelligenceService.getWorkflowTrace(repoId, selectedEntryPoint).then((data) => {
+        if (data) setWorkflowData(data);
+      });
+    }
+    if (!tab || tab === "learning") {
+      codeIntelligenceService.getLearningPath(repoId).then((data) => {
+        if (data) setLearningPath(data);
+      });
+    }
+    if (!tab || tab === "health") {
+      codeIntelligenceService.getHealthInsights(repoId).then((data) => {
+        if (data) setHealthScore(data);
+      });
+    }
   }, [repoId, selectedEntryPoint]);
+
+  // Initial proactive parallel load of all intelligence features
+  useEffect(() => {
+    fetchTabIntelligence();
+  }, [fetchTabIntelligence]);
+
+  // Immediate fetch when switching to a specific tab
+  useEffect(() => {
+    fetchTabIntelligence(mainTab);
+  }, [mainTab, fetchTabIntelligence]);
 
   // Keep state updated if search params change
   useEffect(() => {
@@ -732,8 +742,17 @@ function RepositoryExplorerContent() {
               isRefreshing={isRefreshingReport}
             />
           ) : (
-            <div className="p-8 text-center text-xs font-mono text-[var(--text-secondary)]">
-              Generating Knowledge & Architecture Report...
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Generating Knowledge & Architecture Report...</p>
+              <p className="text-xs text-[var(--text-secondary)]">Analyzing AST symbols, module hierarchies, and data flows.</p>
+              <button
+                type="button"
+                onClick={() => fetchTabIntelligence("report")}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-page)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -766,8 +785,17 @@ function RepositoryExplorerContent() {
               }}
             />
           ) : (
-            <div className="p-8 text-center text-xs font-mono text-[var(--text-secondary)]">
-              Loading onboarding journey...
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Loading Onboarding Journey...</p>
+              <p className="text-xs text-[var(--text-secondary)]">Organizing guided architectural tours and verification checkpoints.</p>
+              <button
+                type="button"
+                onClick={() => fetchTabIntelligence("onboarding")}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-page)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -783,8 +811,17 @@ function RepositoryExplorerContent() {
               onNavigateFile={handleNavigateTarget}
             />
           ) : (
-            <div className="p-8 text-center text-xs font-mono text-[var(--text-secondary)]">
-              Generating repository learning path...
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Generating Repository Learning Path...</p>
+              <p className="text-xs text-[var(--text-secondary)]">Extracting progressive learning modules from core source modules.</p>
+              <button
+                type="button"
+                onClick={() => fetchTabIntelligence("learning")}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-page)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -802,8 +839,17 @@ function RepositoryExplorerContent() {
               onNavigateFile={handleNavigateTarget}
             />
           ) : (
-            <div className="p-8 text-center text-xs font-mono text-[var(--text-secondary)]">
-              Tracing architectural execution path...
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Tracing Architectural Execution Path...</p>
+              <p className="text-xs text-[var(--text-secondary)]">Simulating end-to-end execution flow from entry point to persistence.</p>
+              <button
+                type="button"
+                onClick={() => fetchTabIntelligence("workflow")}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-page)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>
@@ -819,8 +865,17 @@ function RepositoryExplorerContent() {
               onNavigateFile={handleNavigateTarget}
             />
           ) : (
-            <div className="p-8 text-center text-xs font-mono text-[var(--text-secondary)]">
-              Calculating architectural coupling metrics and test linkages...
+            <div className="p-12 flex flex-col items-center justify-center gap-3 text-center rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)]">
+              <Loader2 className="w-6 h-6 animate-spin text-[var(--primary)]" />
+              <p className="text-sm font-semibold text-[var(--text-primary)]">Calculating Architectural Coupling Metrics...</p>
+              <p className="text-xs text-[var(--text-secondary)]">Evaluating modularity, circular dependencies, and test coverage linkages.</p>
+              <button
+                type="button"
+                onClick={() => fetchTabIntelligence("health")}
+                className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-xl border border-[var(--border-color)] hover:bg-[var(--bg-page)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all"
+              >
+                Retry
+              </button>
             </div>
           )}
         </div>

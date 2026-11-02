@@ -620,7 +620,9 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
 
                   {filteredDiscoveredRepos.length === 0 && (
                     <div className="p-6 text-center text-xs text-[var(--text-secondary)] border border-dashed border-[var(--border-color)] rounded-2xl">
-                      No repositories found matching your filter.
+                      {githubConnected
+                        ? "No repositories found matching your filter."
+                        : "Connect GitHub or paste a Personal Access Token (Use Token) to list your private repositories, or type any public repository slug below to index immediately."}
                     </div>
                   )}
                 </div>
