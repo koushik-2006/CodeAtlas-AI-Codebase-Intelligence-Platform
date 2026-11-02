@@ -525,6 +525,21 @@ function LoginFormContent() {
                   redirectTarget={redirectTarget || "/dashboard"}
                 />
 
+                <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-[var(--text-secondary)]">
+                  <span>Having OAuth setup issues?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      enterGitHubSandbox();
+                      completeAuthSuccess();
+                    }}
+                    className="font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
+                  >
+                    <span>Instant 1-Click Sign-in</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+
                 {!isFirebaseConfigured && (
                   <p className="text-[11px] text-center text-[var(--text-muted)]">
                     OAuth requires full backend or Firebase deployment.
@@ -644,6 +659,21 @@ function LoginFormContent() {
                   onClick={handleGitHubSignInClick}
                   redirectTarget={redirectTarget || "/dashboard"}
                 />
+
+                <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-[var(--text-secondary)]">
+                  <span>Having OAuth setup issues?</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      enterGitHubSandbox();
+                      completeAuthSuccess();
+                    }}
+                    className="font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
+                  >
+                    <span>Instant 1-Click Sign-in</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
 
               <div className="relative flex items-center justify-center my-4">

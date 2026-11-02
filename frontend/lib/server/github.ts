@@ -138,15 +138,17 @@ class GitHubClient {
     return Boolean(this.clientId && this.clientSecret && !this.clientId.includes("your_github"));
   }
 
-  getAuthorizationUrl(state: string, scope = "read:user user:email repo"): string {
-    const redirectUri = process.env.GITHUB_CALLBACK_URL || `${this.appUrl}/api/auth/github/callback`;
+  getAuthorizationUrl(state: string, scope = "read:user user:email repo", customRedirectUri?: string): string {
     const params = new URLSearchParams({
       client_id: this.clientId,
-      redirect_uri: redirectUri,
       scope,
       state,
       allow_signup: "true",
     });
+
+    if (customRedirectUri) {
+      params.set("redirect_uri", customRedirectUri);
+    }
 
     return `https://github.com/login/oauth/authorize?${params.toString()}`;
   }
@@ -194,19 +196,18 @@ class GitHubClient {
       };
     }
 
-    const redirectUri = process.env.GITHUB_CALLBACK_URL || `${this.appUrl}/api/auth/github/callback`;
+    const payload: Record<string, string> = {
+      client_id: this.clientId,
+      client_secret: this.clientSecret,
+      code,
+    };
     const res = await fetch("https://github.com/login/oauth/access_token", {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        client_id: this.clientId,
-        client_secret: this.clientSecret,
-        code,
-        redirect_uri: redirectUri,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (!res.ok) {
