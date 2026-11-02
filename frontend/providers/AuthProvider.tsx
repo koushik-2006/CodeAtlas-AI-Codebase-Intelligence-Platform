@@ -39,7 +39,16 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const isLoggedOut = localStorage.getItem("codeatlas_demo_active_user") === "logged_out";
+        const rawStored = localStorage.getItem("codeatlas-auth-user");
+        if (!isLoggedOut && rawStored) return JSON.parse(rawStored);
+      } catch {}
+    }
+    return null;
+  });
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const refreshSession = useCallback(async () => {
@@ -84,20 +93,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 } catch {}
               }
             } else {
-              // No active Firebase user; check if an explicit demo mode session was selected
+              // No active Firebase user; check stored session or demo mode session
               try {
-                const isDemoSession =
-                  localStorage.getItem("codeatlas_active_demo_session") === "true";
                 const isLoggedOut =
                   localStorage.getItem("codeatlas_demo_active_user") === "logged_out";
+                const rawStored = localStorage.getItem("codeatlas-auth-user");
+                const isDemoSession =
+                  localStorage.getItem("codeatlas_active_demo_session") === "true";
 
-                if (isDemoSession && !isLoggedOut) {
-                  let activeUser = DEMO_USER;
+                if (!isLoggedOut && rawStored) {
                   try {
-                    const rawStored = localStorage.getItem("codeatlas-auth-user");
-                    if (rawStored) activeUser = JSON.parse(rawStored);
-                  } catch {}
-                  setUser(activeUser);
+                    setUser(JSON.parse(rawStored));
+                  } catch {
+                    setUser(DEMO_USER);
+                  }
+                } else if (!isLoggedOut && isDemoSession) {
+                  setUser(DEMO_USER);
                 } else {
                   setUser(null);
                 }
