@@ -1,56 +1,97 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Terminal,
   Search,
-  Filter,
   ShieldCheck,
   Copy,
   Check,
   ChevronDown,
   ChevronRight,
-  AlertCircle,
+  Play,
+  Pause,
+  Filter,
+  Share2,
+  Trash2,
 } from "lucide-react";
 import { StructuredLogEntry, LogLevel } from "@/types/observability";
-import { apiClient } from "@/services/api-client";
+import { getStore, addTelemetryLog } from "@/lib/demo/store";
 
-export function LiveLogsViewer() {
-  const [logs, setLogs] = useState<StructuredLogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
+interface LiveLogsViewerProps {
+  logs?: StructuredLogEntry[];
+  onSelectTrace?: (traceId: string) => void;
+}
+
+const SAMPLE_SERVICES = ["api-gateway", "auth-service", "payment-service", "fastapi-backend", "redis_cache"];
+const SAMPLE_OPERATIONS = [
+  { op: "auth.verifyToken", service: "auth-service", lvl: "info", msg: "JWT token verified for session usr_demo" },
+  { op: "gateway.route", service: "api-gateway", lvl: "info", msg: "Proxied GET /api/v1/repositories/sample-project" },
+  { op: "cache.get", service: "redis_cache", lvl: "debug", msg: "Cache hit for symbol: ast_lookup_fastapi" },
+  { op: "db.query", service: "fastapi-backend", lvl: "info", msg: "AST parse completed in 42ms" },
+  { op: "payment.verifyCard", service: "payment-service", lvl: "info", msg: "Pre-auth token validated with Stripe connector" },
+  { op: "gateway.ratelimit", service: "api-gateway", lvl: "warn", msg: "IP 192.168.1.100 approaching 80% quota threshold" },
+];
+
+export function LiveLogsViewer({ logs: externalLogs, onSelectTrace }: LiveLogsViewerProps) {
+  const [internalLogs, setInternalLogs] = useState<StructuredLogEntry[]>(() => {
+    if (externalLogs && externalLogs.length > 0) return externalLogs;
+    const store = getStore();
+    return store.logs || [];
+  });
+
+  const [isStreaming, setIsStreaming] = useState(true);
   const [search, setSearch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const fetchLogs = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (selectedLevel !== "all") params.set("level", selectedLevel);
-      if (search.trim()) params.set("search", search.trim());
-      params.set("limit", "100");
-
-      const res = await apiClient.get<any>(`/api/telemetry/logs?${params.toString()}`);
-      const json = res.data || {};
-      if (res.success && (json.logs || json.data?.logs)) {
-        setLogs(json.logs || json.data?.logs);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedLevel, search]);
-
+  // Sync with store / external props
   useEffect(() => {
-    fetchLogs();
-  }, [fetchLogs]);
+    if (externalLogs && externalLogs.length > 0) {
+      setInternalLogs(externalLogs);
+    } else {
+      const store = getStore();
+      if (store.logs) setInternalLogs(store.logs);
+    }
+  }, [externalLogs]);
 
+  // Simulated live log ticker
+  useEffect(() => {
+    if (!isStreaming) return;
+
+    const timer = setInterval(() => {
+      const sample = SAMPLE_OPERATIONS[Math.floor(Math.random() * SAMPLE_OPERATIONS.length)];
+      const traceNum = Math.floor(100 + Math.random() * 900);
+      const newEntry: StructuredLogEntry = {
+        id: `log_live_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString(),
+        level: sample.lvl as LogLevel,
+        service: sample.service,
+        environment: "production",
+        correlationId: `corr_live_${Date.now().toString(36)}`,
+        operation: sample.op,
+        outcome: "success",
+        errorMessage: sample.msg,
+        durationMs: Math.floor(10 + Math.random() * 45),
+        metadata: {
+          traceId: `tr-auth-flow-${traceNum}`,
+          client: "web-spa",
+          region: "us-east-1",
+        },
+      };
+
+      setInternalLogs((prev) => [newEntry, ...prev.slice(0, 199)]);
+      addTelemetryLog(newEntry);
+    }, 4000);
+
+    return () => clearInterval(timer);
+  }, [isStreaming]);
 
   const handleCopy = (text: string, id: string) => {
-    navigator.clipboard.writeText(text);
+    if (typeof navigator !== "undefined") {
+      navigator.clipboard.writeText(text);
+    }
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
@@ -70,23 +111,66 @@ export function LiveLogsViewer() {
     }
   };
 
+  const filteredLogs = useMemo(() => {
+    return internalLogs.filter((log) => {
+      if (selectedLevel !== "all" && log.level !== selectedLevel) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        const matchesMsg = log.errorMessage?.toLowerCase().includes(q);
+        const matchesOp = log.operation?.toLowerCase().includes(q);
+        const matchesService = log.service?.toLowerCase().includes(q);
+        const matchesCorr = log.correlationId?.toLowerCase().includes(q);
+        const matchesTrace = log.metadata?.traceId?.toLowerCase().includes(q);
+        if (!matchesMsg && !matchesOp && !matchesService && !matchesCorr && !matchesTrace) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [internalLogs, selectedLevel, search]);
+
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/50 backdrop-blur-sm p-5 flex flex-col h-[520px]">
+    <div className="rounded-xl border border-white/10 bg-slate-900/50 backdrop-blur-sm p-5 flex flex-col h-[560px] shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-3 border-b border-white/5">
         <div>
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Terminal className="w-5 h-5 text-emerald-400" />
-            Live Structured Logs & Audit Stream
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <Terminal className="w-5 h-5 text-emerald-400" />
+              Live Structured Logs & Audit Stream
+            </h2>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-300 border border-purple-500/30">
+              Simulated
+            </span>
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
-            <span className="text-xs text-slate-400">In-memory telemetry ring buffer</span>
+            <span className="text-xs text-slate-400">In-memory telemetry ring buffer (200 events)</span>
             <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
-              <ShieldCheck className="w-3 h-3" /> Secret Redaction Active
+              <ShieldCheck className="w-3 h-3" /> PII & Secret Redaction Active
             </span>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Pause / Resume Ticker */}
+          <button
+            onClick={() => setIsStreaming(!isStreaming)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold transition-colors ${
+              isStreaming
+                ? "bg-amber-500/10 border-amber-500/30 text-amber-300 hover:bg-amber-500/20"
+                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/20"
+            }`}
+          >
+            {isStreaming ? (
+              <>
+                <Pause className="w-3.5 h-3.5" /> Pause Stream
+              </>
+            ) : (
+              <>
+                <Play className="w-3.5 h-3.5" /> Resume Stream
+              </>
+            )}
+          </button>
+
           {/* Level Filter */}
           <div className="flex items-center bg-slate-800 rounded-lg p-1 border border-white/5 text-xs">
             {["all", "error", "warn", "info", "debug"].map((lvl) => (
@@ -95,7 +179,7 @@ export function LiveLogsViewer() {
                 onClick={() => setSelectedLevel(lvl)}
                 className={`px-2.5 py-1 rounded capitalize font-medium transition-colors ${
                   selectedLevel === lvl
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-indigo-600 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -108,33 +192,34 @@ export function LiveLogsViewer() {
           <div className="relative">
             <input
               type="text"
-              placeholder="Search logs or trace..."
+              placeholder="Search logs, op, trace..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && fetchLogs()}
-              className="w-48 sm:w-56 px-3 py-1.5 pl-8 rounded-lg bg-slate-800/80 border border-white/10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              className="w-44 sm:w-52 px-3 py-1.5 pl-8 rounded-lg bg-slate-800/80 border border-white/10 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
             />
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2.5" />
           </div>
-
-          <button
-            onClick={fetchLogs}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 border border-white/10 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
-          >
-            Filter
-          </button>
         </div>
       </div>
 
       {/* Log Feed */}
       <div className="flex-1 overflow-y-auto space-y-2 font-mono text-xs pr-1">
-        {logs.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500">
-            No structured logs match the current filter.
+        {filteredLogs.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-slate-500 gap-2">
+            <span>No structured logs match current search or level criteria.</span>
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="text-xs text-indigo-400 hover:underline"
+              >
+                Clear search filter
+              </button>
+            )}
           </div>
         ) : (
-          logs.map((log) => {
+          filteredLogs.map((log) => {
             const isExpanded = expandedLogId === log.id;
+            const traceId = log.metadata?.traceId || (log as any).traceId || (log.correlationId?.includes("req_demo") ? "tr-auth-flow-101" : undefined);
 
             return (
               <div
@@ -159,14 +244,32 @@ export function LiveLogsViewer() {
                     >
                       {log.level}
                     </span>
-                    <span className="text-indigo-300 font-medium">{log.operation}</span>
-                    <span className="text-slate-300 line-clamp-1">{log.errorMessage || "Completed successfully"}</span>
+                    <span className="text-slate-400 text-[11px] font-medium">[{log.service}]</span>
+                    <span className="text-indigo-300 font-semibold">{log.operation}</span>
+                    <span className="text-slate-300 line-clamp-1">
+                      {log.errorMessage || "Operation completed successfully"}
+                    </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {traceId && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onSelectTrace) onSelectTrace(traceId);
+                        }}
+                        title={`Open trace ${traceId} in waterfall view`}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/20 text-[10px] font-mono transition-colors"
+                      >
+                        <Share2 className="w-2.5 h-2.5" />
+                        {traceId}
+                      </button>
+                    )}
+
                     {log.durationMs !== undefined && (
                       <span className="text-[11px] text-slate-400">{log.durationMs}ms</span>
                     )}
+
                     <button
                       onClick={() => handleCopy(log.correlationId, log.id)}
                       title={`Copy Correlation ID: ${log.correlationId}`}
@@ -186,7 +289,7 @@ export function LiveLogsViewer() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-400">
                       <div>
                         <span className="text-slate-500 block text-[10px]">CORRELATION ID:</span>
-                        <span className="text-slate-200 select-all">{log.correlationId}</span>
+                        <span className="text-slate-200 select-all font-mono">{log.correlationId}</span>
                       </div>
                       <div>
                         <span className="text-slate-500 block text-[10px]">SERVICE / ENV:</span>
@@ -203,14 +306,24 @@ export function LiveLogsViewer() {
                       {log.httpStatus && (
                         <div>
                           <span className="text-slate-500 block text-[10px]">HTTP STATUS:</span>
-                          <span className="text-slate-200 font-bold">{log.httpStatus}</span>
+                          <span
+                            className={`font-bold ${
+                              log.httpStatus >= 500
+                                ? "text-rose-400"
+                                : log.httpStatus >= 400
+                                ? "text-amber-400"
+                                : "text-emerald-400"
+                            }`}
+                          >
+                            {log.httpStatus}
+                          </span>
                         </div>
                       )}
                     </div>
 
                     {log.metadata && Object.keys(log.metadata).length > 0 && (
                       <div>
-                        <span className="text-slate-500 block text-[10px] mb-1">METADATA (REDACTED):</span>
+                        <span className="text-slate-500 block text-[10px] mb-1">METADATA (ENRICHED & SANITIZED):</span>
                         <pre className="p-2 rounded bg-slate-900 border border-white/5 text-[11px] text-slate-300 overflow-x-auto">
                           {JSON.stringify(log.metadata, null, 2)}
                         </pre>

@@ -19,6 +19,13 @@ import {
   ActivityTarget,
   ActivityFilterState,
 } from "@/types/activity";
+import {
+  CircuitBreakerStatus,
+  OperationalAlertRule,
+  OperationalAlertIncident,
+  StructuredLogEntry,
+  DistributedTrace,
+} from "@/types/observability";
 
 export interface StoreUser {
   id: string;
@@ -107,6 +114,7 @@ export interface DemoStoreData {
   userSettings: any;
   circuitBreakers: Record<string, any>;
   alertRules: any[];
+  activeAlerts?: any[];
   systemHealth: any;
   logs: any[];
   traces: any[];
@@ -134,7 +142,7 @@ export interface CodeAnalysisHistoryItem {
   repositoryId?: string;
 }
 
-const STORE_VERSION = 7;
+const STORE_VERSION = 8;
 
 /**
  * Generates the complete initial seeded dataset across 3 workspaces and 7 repositories.
@@ -1594,33 +1602,104 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     },
   };
 
-  const alertRules = [
+  const alertRules: OperationalAlertRule[] = [
     {
       id: "rule_high_error_rate",
       name: "High API Error Rate",
-      metricName: "http_5xx_rate",
+      metric: "http_5xx_rate",
       condition: "gt",
       threshold: 5,
+      unit: "%",
       severity: "critical",
-      status: "resolved",
+      cooldownSeconds: 300,
       description: "Fires when HTTP 5xx responses exceed 5% over a 5-minute sliding window.",
     },
     {
       id: "rule_p95_latency",
       name: "P95 Latency Spike",
-      metricName: "p95_latency_ms",
+      metric: "p95_latency_ms",
       condition: "gt",
       threshold: 1200,
+      unit: "ms",
       severity: "warning",
-      status: "resolved",
+      cooldownSeconds: 180,
       description: "Fires when 95th percentile response latency exceeds 1.2 seconds.",
+    },
+    {
+      id: "rule_cpu_saturation",
+      name: "Host CPU Saturation",
+      metric: "cpu_usage",
+      condition: "gt",
+      threshold: 85,
+      unit: "%",
+      severity: "warning",
+      cooldownSeconds: 120,
+      description: "Fires when average CPU utilization across microservices exceeds 85%.",
+    },
+    {
+      id: "rule_heap_exhaustion",
+      name: "Node Heap Memory Pressure",
+      metric: "heap_used_mb",
+      condition: "gt",
+      threshold: 512,
+      unit: "MB",
+      severity: "critical",
+      cooldownSeconds: 240,
+      description: "Fires when V8 heap allocation exceeds 512MB.",
     },
   ];
 
-  const circuitBreakers = {
-    ai_provider: { name: "ai_provider", state: "CLOSED", failures: 0, lastFailure: null },
-    github_api: { name: "github_api", state: "CLOSED", failures: 0, lastFailure: null },
-    db_pool: { name: "db_pool", state: "CLOSED", failures: 0, lastFailure: null },
+  const circuitBreakers: Record<string, CircuitBreakerStatus> = {
+    ai_provider: {
+      name: "ai_provider",
+      state: "CLOSED",
+      failureCount: 0,
+      successCount: 1420,
+      consecutiveFailures: 0,
+      lastStateChange: timestamp,
+      threshold: 5,
+      cooldownPeriodMs: 30000,
+    },
+    github_api: {
+      name: "github_api",
+      state: "CLOSED",
+      failureCount: 0,
+      successCount: 890,
+      consecutiveFailures: 0,
+      lastStateChange: timestamp,
+      threshold: 5,
+      cooldownPeriodMs: 60000,
+    },
+    db_pool: {
+      name: "db_pool",
+      state: "CLOSED",
+      failureCount: 0,
+      successCount: 4520,
+      consecutiveFailures: 0,
+      lastStateChange: timestamp,
+      threshold: 3,
+      cooldownPeriodMs: 15000,
+    },
+    payment_gateway: {
+      name: "payment_gateway",
+      state: "CLOSED",
+      failureCount: 0,
+      successCount: 310,
+      consecutiveFailures: 0,
+      lastStateChange: timestamp,
+      threshold: 4,
+      cooldownPeriodMs: 45000,
+    },
+    redis_cache: {
+      name: "redis_cache",
+      state: "CLOSED",
+      failureCount: 0,
+      successCount: 9800,
+      consecutiveFailures: 0,
+      lastStateChange: timestamp,
+      threshold: 5,
+      cooldownPeriodMs: 20000,
+    },
   };
 
   // 10. Activities & Notifications
@@ -2193,30 +2272,199 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     },
     circuitBreakers,
     alertRules,
+    activeAlerts: [],
     systemHealth,
     logs: [
       {
-        id: "log_1",
-        timestamp,
+        id: "log_init_1",
+        timestamp: new Date(now - 1000 * 60 * 12).toISOString(),
         level: "info",
-        service: "codeatlas-core",
+        service: "api-gateway",
         environment: "production",
-        correlationId: "req_demo_init",
-        operation: "auth.session",
+        correlationId: "req_demo_init_01",
+        operation: "auth.session.validate",
         outcome: "success",
         userId: "usr_demo",
-        metadata: { client: "web-spa", mode: "demo" },
+        route: "/api/v1/auth/session",
+        httpStatus: 200,
+        durationMs: 14,
+        metadata: { client: "web-spa", mode: "demo", ip: "127.0.0.1", traceId: "tr-auth-flow-101" },
+      },
+      {
+        id: "log_init_2",
+        timestamp: new Date(now - 1000 * 60 * 10).toISOString(),
+        level: "info",
+        service: "auth-service",
+        environment: "production",
+        correlationId: "req_demo_auth_02",
+        operation: "auth.token.exchange",
+        outcome: "success",
+        userId: "usr_demo",
+        route: "/api/v1/auth/token",
+        httpStatus: 200,
+        durationMs: 45,
+        metadata: { grantType: "authorization_code", keyId: "pub_live_9", traceId: "tr-auth-flow-101" },
+      },
+      {
+        id: "log_init_3",
+        timestamp: new Date(now - 1000 * 60 * 7).toISOString(),
+        level: "warn",
+        service: "redis_cache",
+        environment: "production",
+        correlationId: "req_demo_cache_03",
+        operation: "cache.miss.ast_symbol",
+        outcome: "success",
+        durationMs: 82,
+        errorMessage: "Cache miss for AST symbol index: sample-project. Re-indexing AST nodes from disk.",
+        metadata: { key: "ast:sym:sample-project", fallback: "memory_store" },
+      },
+      {
+        id: "log_init_4",
+        timestamp: new Date(now - 1000 * 60 * 4).toISOString(),
+        level: "info",
+        service: "fastapi-backend",
+        environment: "production",
+        correlationId: "req_demo_ast_04",
+        operation: "indexer.ast.parse",
+        outcome: "success",
+        durationMs: 38,
+        repositoryId: "sample-project",
+        route: "/api/v1/indexer/parse",
+        httpStatus: 200,
+        metadata: { filesCount: 14, symbolsExtracted: 86 },
+      },
+      {
+        id: "log_init_5",
+        timestamp: new Date(now - 1000 * 60 * 2).toISOString(),
+        level: "info",
+        service: "api-gateway",
+        environment: "production",
+        correlationId: "req_demo_probe_05",
+        operation: "telemetry.health.probe",
+        outcome: "success",
+        durationMs: 5,
+        route: "/health",
+        httpStatus: 200,
+        metadata: { allPassing: true },
       },
     ],
     traces: [
       {
-        traceId: "trace-demo-1",
-        rootSpanName: "GET /api/repositories/sample-project",
-        startTime: new Date(Date.now() - 300000).toISOString(),
-        durationMs: 42,
+        traceId: "tr-auth-flow-101",
+        rootSpanName: "POST /api/v1/auth/token",
+        startTime: new Date(now - 1000 * 60 * 10).toISOString(),
+        durationMs: 145,
         status: "ok",
-        spansCount: 4,
-        services: ["web-gateway", "ast-resolver", "cache-service"],
+        spanCount: 4,
+        spans: [
+          {
+            id: "sp-gw-01",
+            traceId: "tr-auth-flow-101",
+            name: "api-gateway routing & auth filter",
+            service: "api-gateway",
+            startTime: now - 1000 * 60 * 10,
+            durationMs: 14,
+            status: "ok",
+            attributes: { route: "/api/v1/auth/token", method: "POST" },
+            events: [{ name: "request_received", timestamp: new Date(now - 1000 * 60 * 10).toISOString() }],
+          },
+          {
+            id: "sp-auth-02",
+            traceId: "tr-auth-flow-101",
+            parentId: "sp-gw-01",
+            name: "verifyCredentials",
+            service: "auth-service",
+            startTime: now - 1000 * 60 * 10 + 14,
+            durationMs: 112,
+            status: "ok",
+            attributes: {
+              file: "src/services/auth.ts",
+              "code.filepath": "src/services/auth.ts",
+              "code.lineno": 42,
+              repositoryId: "sample-project",
+            },
+            events: [{ name: "hash_evaluated", timestamp: new Date(now - 1000 * 60 * 10 + 35).toISOString() }],
+          },
+          {
+            id: "sp-db-03",
+            traceId: "tr-auth-flow-101",
+            parentId: "sp-auth-02",
+            name: "SELECT * FROM users WHERE email = $1",
+            service: "db_pool",
+            startTime: now - 1000 * 60 * 10 + 18,
+            durationMs: 16,
+            status: "ok",
+            attributes: { query: "SELECT * FROM users WHERE email = $1", poolSize: 10 },
+            events: [],
+          },
+          {
+            id: "sp-jwt-04",
+            traceId: "tr-auth-flow-101",
+            parentId: "sp-auth-02",
+            name: "signSessionToken",
+            service: "auth-service",
+            startTime: now - 1000 * 60 * 10 + 126,
+            durationMs: 19,
+            status: "ok",
+            attributes: {
+              file: "src/services/auth.ts",
+              "code.filepath": "src/services/auth.ts",
+              "code.lineno": 118,
+              repositoryId: "sample-project",
+            },
+            events: [],
+          },
+        ],
+      },
+      {
+        traceId: "tr-index-ast-202",
+        rootSpanName: "POST /api/v1/indexer/parse",
+        startTime: new Date(now - 1000 * 60 * 4).toISOString(),
+        durationMs: 168,
+        status: "ok",
+        spanCount: 3,
+        spans: [
+          {
+            id: "sp-index-01",
+            traceId: "tr-index-ast-202",
+            name: "indexer.ast.batch",
+            service: "fastapi-backend",
+            startTime: now - 1000 * 60 * 4,
+            durationMs: 168,
+            status: "ok",
+            attributes: { repositoryId: "sample-project", files: 14 },
+            events: [],
+          },
+          {
+            id: "sp-parse-02",
+            traceId: "tr-index-ast-202",
+            parentId: "sp-index-01",
+            name: "traverseAstAndBuildGraph",
+            service: "fastapi-backend",
+            startTime: now - 1000 * 60 * 4 + 20,
+            durationMs: 124,
+            status: "ok",
+            attributes: {
+              file: "src/indexer/ast-parser.ts",
+              "code.filepath": "src/indexer/ast-parser.ts",
+              "code.lineno": 32,
+              repositoryId: "sample-project",
+            },
+            events: [],
+          },
+          {
+            id: "sp-cache-03",
+            traceId: "tr-index-ast-202",
+            parentId: "sp-index-01",
+            name: "persistSymbolIndex",
+            service: "redis_cache",
+            startTime: now - 1000 * 60 * 4 + 144,
+            durationMs: 24,
+            status: "ok",
+            attributes: { totalKeys: 86 },
+            events: [],
+          },
+        ],
       },
     ],
     architectureNodePositions: {},
@@ -4897,6 +5145,426 @@ export function updateFindingDecision(
   return true;
 }
 
+export function updateCircuitBreaker(
+  name: string,
+  action: "trip" | "reset"
+): { success: boolean; breaker?: CircuitBreakerStatus; message: string } {
+  const store = getStore();
+  if (!store.circuitBreakers) store.circuitBreakers = {};
+
+  const existing = store.circuitBreakers[name] || {
+    name,
+    state: "CLOSED",
+    failureCount: 0,
+    successCount: 100,
+    consecutiveFailures: 0,
+    lastStateChange: new Date().toISOString(),
+    threshold: 5,
+    cooldownPeriodMs: 30000,
+  };
+
+  const newState = action === "trip" ? "OPEN" : "CLOSED";
+  const consecutiveFailures = action === "trip" ? existing.threshold : 0;
+  const failureCount = action === "trip" ? existing.failureCount + 1 : existing.failureCount;
+
+  store.circuitBreakers[name] = {
+    ...existing,
+    name,
+    state: newState,
+    consecutiveFailures,
+    failureCount,
+    lastStateChange: new Date().toISOString(),
+    lastFailureTime: action === "trip" ? new Date().toISOString() : existing.lastFailureTime,
+  };
+
+  logActivity({
+    module: "system-health",
+    action: action === "trip" ? "trip_circuit_breaker" : "reset_circuit_breaker",
+    type: action === "trip" ? "circuit_breaker_tripped" : "circuit_breaker_reset",
+    title: `${action === "trip" ? "Tripped" : "Reset"} Circuit Breaker: ${name}`,
+    description: `Circuit breaker ${name} manually transitioned to ${newState}.`,
+    href: "/system-health",
+    target: { type: "service", id: name, name },
+    status: action === "trip" ? "warning" : "success",
+    details: {
+      metadata: {
+        breaker: name,
+        newState,
+        consecutiveFailures,
+      },
+    },
+  });
+
+  saveStore(store);
+  return {
+    success: true,
+    breaker: store.circuitBreakers[name],
+    message: `Circuit breaker ${name} is now ${newState}.`,
+  };
+}
+
+export function addAlertRule(rule: Partial<OperationalAlertRule>): OperationalAlertRule {
+  const store = getStore();
+  if (!store.alertRules) store.alertRules = [];
+
+  const newRule: OperationalAlertRule = {
+    id: rule.id || `rule_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name: rule.name || "Custom Alert Rule",
+    metric: rule.metric || "p95_latency_ms",
+    condition: rule.condition || "gt",
+    threshold: rule.threshold !== undefined ? rule.threshold : 1000,
+    unit: rule.unit || "ms",
+    severity: rule.severity || "warning",
+    cooldownSeconds: rule.cooldownSeconds || 120,
+    description: rule.description || "Alert rule created by operator.",
+  };
+
+  store.alertRules.push(newRule);
+
+  logActivity({
+    module: "system-health",
+    action: "create",
+    type: "alert_rule_created",
+    title: `Created Alert Rule: ${newRule.name}`,
+    description: `Threshold rule configured for metric ${newRule.metric} (${newRule.condition} ${newRule.threshold}${newRule.unit}).`,
+    href: "/system-health",
+    target: { type: "rule", id: newRule.id, name: newRule.name },
+    status: "success",
+    details: { metadata: { rule: newRule } },
+  });
+
+  saveStore(store);
+  return newRule;
+}
+
+export function deleteAlertRule(ruleId: string): boolean {
+  const store = getStore();
+  if (!store.alertRules) return false;
+
+  const rule = store.alertRules.find((r: any) => r.id === ruleId);
+  store.alertRules = store.alertRules.filter((r: any) => r.id !== ruleId);
+
+  if (rule) {
+    logActivity({
+      module: "system-health",
+      action: "delete",
+      type: "alert_rule_deleted",
+      title: `Deleted Alert Rule: ${rule.name}`,
+      description: `Removed alert rule for ${rule.metric || rule.metricName}.`,
+      href: "/system-health",
+      target: { type: "rule", id: rule.id, name: rule.name },
+      status: "info",
+    });
+  }
+
+  saveStore(store);
+  return true;
+}
+
+export function acknowledgeAlertIncident(incidentId: string, ackedBy: string = "SRE Operator"): boolean {
+  const store = getStore();
+  if (!store.activeAlerts) store.activeAlerts = [];
+
+  const incident = store.activeAlerts.find((inc: any) => inc.id === incidentId);
+  if (!incident) return false;
+
+  incident.status = "acknowledged";
+  incident.acknowledgedAt = new Date().toISOString();
+  incident.acknowledgedBy = ackedBy;
+
+  logActivity({
+    module: "system-health",
+    action: "update",
+    type: "alert_acknowledged",
+    title: `Acknowledged Alert: ${incident.name}`,
+    description: `Incident ${incident.id} acknowledged by ${ackedBy}.`,
+    href: "/system-health",
+    target: { type: "alert", id: incident.id, name: incident.name },
+    status: "info",
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function resolveAlertIncident(incidentId: string, note?: string): boolean {
+  const store = getStore();
+  if (!store.activeAlerts) store.activeAlerts = [];
+
+  const incident = store.activeAlerts.find((inc: any) => inc.id === incidentId);
+  if (!incident) return false;
+
+  incident.status = "resolved";
+  incident.resolvedAt = new Date().toISOString();
+
+  // Remove from active firing list
+  store.activeAlerts = store.activeAlerts.filter((inc: any) => inc.id !== incidentId);
+
+  logActivity({
+    module: "system-health",
+    action: "update",
+    type: "alert_resolved",
+    title: `Resolved Alert: ${incident.name}`,
+    description: note ? `Resolved with note: ${note}` : "Incident marked resolved by operator.",
+    href: "/system-health",
+    target: { type: "alert", id: incident.id, name: incident.name },
+    status: "success",
+    details: { metadata: { note } },
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function snoozeAlertIncident(incidentId: string, durationMinutes: number = 30): boolean {
+  const store = getStore();
+  if (!store.activeAlerts) store.activeAlerts = [];
+
+  const incident = store.activeAlerts.find((inc: any) => inc.id === incidentId);
+  if (!incident) return false;
+
+  incident.status = "acknowledged";
+  incident.acknowledgedBy = `Snoozed (${durationMinutes}m)`;
+
+  logActivity({
+    module: "system-health",
+    action: "update",
+    type: "alert_snoozed",
+    title: `Snoozed Alert: ${incident.name}`,
+    description: `Alert notifications paused for ${durationMinutes} minutes.`,
+    href: "/system-health",
+    target: { type: "alert", id: incident.id, name: incident.name },
+    status: "info",
+  });
+
+  saveStore(store);
+  return true;
+}
+
+export function simulateTelemetryIncident(serviceName: string = "payment-service"): {
+  incident: OperationalAlertIncident;
+  traceId: string;
+} {
+  const store = getStore();
+  if (!store.activeAlerts) store.activeAlerts = [];
+  if (!store.logs) store.logs = [];
+  if (!store.traces) store.traces = [];
+  if (!store.notifications) store.notifications = [];
+  if (!store.debugInvestigations) store.debugInvestigations = [];
+
+  const nowIso = new Date().toISOString();
+  const traceId = `tr-incident-${Date.now()}`;
+  const incidentId = `inc_${Date.now()}`;
+
+  // 1. Create firing incident
+  const incident: OperationalAlertIncident = {
+    id: incidentId,
+    ruleId: "rule_high_error_rate",
+    name: `${serviceName} Latency & Error Spike`,
+    severity: "critical",
+    status: "firing",
+    message: `HTTP 504 Gateway Timeout: ${serviceName} downstream connection pool exhausted (error rate at 28.4%).`,
+    currentValue: 28.4,
+    threshold: 5,
+    unit: "%",
+    deduplicationKey: `${serviceName}:http_5xx_rate`,
+    triggeredAt: nowIso,
+  };
+  store.activeAlerts.unshift(incident);
+
+  // 2. Trip breaker if payment or db
+  if (serviceName.includes("payment") && store.circuitBreakers?.payment_gateway) {
+    store.circuitBreakers.payment_gateway.state = "OPEN";
+    store.circuitBreakers.payment_gateway.consecutiveFailures = 5;
+    store.circuitBreakers.payment_gateway.failureCount += 1;
+    store.circuitBreakers.payment_gateway.lastFailureTime = nowIso;
+  }
+
+  // 3. Add error logs
+  const errorLog: StructuredLogEntry = {
+    id: `log_err_${Date.now()}`,
+    timestamp: nowIso,
+    level: "error",
+    service: serviceName,
+    environment: "production",
+    correlationId: `corr_inc_${Date.now()}`,
+    operation: "checkout.processPayment",
+    outcome: "failure",
+    httpStatus: 504,
+    errorMessage: "PaymentGatewayTimeoutException: Connection pool exhausted after 30000ms",
+    durationMs: 30012,
+    route: "/api/v1/checkout/charge",
+    metadata: {
+      traceId,
+      circuitBreaker: "payment_gateway",
+      retryCount: 3,
+      stack: "Error: Connection timeout at PaymentGatewayClient.execute (src/services/payment.ts:88:14)",
+    },
+  };
+  store.logs.unshift(errorLog);
+
+  // 4. Add failed distributed trace
+  const failedTrace: DistributedTrace = {
+    traceId,
+    rootSpanName: "POST /api/v1/checkout/charge",
+    startTime: nowIso,
+    durationMs: 3012,
+    status: "error",
+    spanCount: 3,
+    spans: [
+      {
+        id: `sp_inc_root_${Date.now()}`,
+        traceId,
+        name: "POST /api/v1/checkout/charge",
+        service: "api-gateway",
+        startTime: Date.now(),
+        durationMs: 3012,
+        status: "error",
+        attributes: { route: "/api/v1/checkout/charge", status: 504 },
+        events: [{ name: "circuit_breaker_open", timestamp: nowIso }],
+      },
+      {
+        id: `sp_inc_svc_${Date.now()}`,
+        traceId,
+        parentId: `sp_inc_root_${Date.now()}`,
+        name: "executePaymentTransaction",
+        service: serviceName,
+        startTime: Date.now() + 15,
+        durationMs: 2980,
+        status: "error",
+        attributes: {
+          file: "src/services/payment.ts",
+          "code.filepath": "src/services/payment.ts",
+          "code.lineno": 88,
+          repositoryId: "sample-project",
+          error: "Connection pool exhausted",
+        },
+        events: [{ name: "pool_exhausted", timestamp: nowIso }],
+      },
+      {
+        id: `sp_inc_db_${Date.now()}`,
+        traceId,
+        parentId: `sp_inc_svc_${Date.now()}`,
+        name: "acquireConnection",
+        service: "db_pool",
+        startTime: Date.now() + 20,
+        durationMs: 2900,
+        status: "error",
+        attributes: { pool_timeout: true },
+        events: [],
+      },
+    ],
+  };
+  store.traces.unshift(failedTrace);
+
+  // 5. Pre-seed Debugger Investigation
+  const invId = `inv_incident_${Date.now()}`;
+  store.debugInvestigations.unshift({
+    id: invId,
+    title: `Investigate ${serviceName} 504 Timeout Spike`,
+    errorType: "PaymentGatewayTimeoutException",
+    errorMessage: `Connection pool exhausted after 30000ms on ${serviceName}`,
+    status: "open",
+    repositoryId: "sample-project",
+    createdAt: nowIso,
+    updatedAt: nowIso,
+    stackTrace: `PaymentGatewayTimeoutException: Connection pool exhausted after 30000ms
+    at PaymentGatewayClient.execute (src/services/payment.ts:88:14)
+    at async processOrder (src/services/payment.ts:142:9)
+    at async handleCheckout (src/api/checkout.ts:34:5)`,
+    frames: [
+      {
+        file: "src/services/payment.ts",
+        line: 88,
+        column: 14,
+        functionName: "PaymentGatewayClient.execute",
+        codeSnippet: `const connection = await pool.acquire({ timeoutMs: 30000 });\nif (!connection) throw new PaymentGatewayTimeoutException("Connection pool exhausted after 30000ms");`,
+      },
+      {
+        file: "src/services/payment.ts",
+        line: 142,
+        column: 9,
+        functionName: "processOrder",
+        codeSnippet: `const result = await client.execute(transactionPayload);\nreturn result;`,
+      },
+      {
+        file: "src/api/checkout.ts",
+        line: 34,
+        column: 5,
+        functionName: "handleCheckout",
+        codeSnippet: `const payment = await processOrder(req.body);\nres.json({ success: true, payment });`,
+      },
+    ],
+    hypotheses: [
+      {
+        id: "hyp_pool_exhaustion",
+        title: "Connection pool starvation under burst traffic",
+        description: "Connections are held open during external gateway handshake, exhausting available slots in the pool.",
+        probability: "high",
+        confidence: 0.92,
+      },
+      {
+        id: "hyp_keepalive_leak",
+        title: "TCP socket leak without explicit keep-alive timeout",
+        description: "Dead sockets remain in TIME_WAIT, preventing pool recycling.",
+        probability: "medium",
+        confidence: 0.65,
+      },
+    ],
+  });
+
+  // 6. Notification
+  store.notifications.unshift({
+    id: `notif_inc_${Date.now()}`,
+    userId: "usr_demo",
+    title: `CRITICAL ALERT: ${serviceName} Degradation`,
+    description: incident.message,
+    timestamp: "Just now",
+    read: false,
+    type: "system",
+    href: `/system-health`,
+  });
+
+  // 7. Log Activity
+  logActivity({
+    module: "system-health",
+    action: "simulate_incident",
+    type: "incident_simulated",
+    title: `Simulated SRE Incident: ${serviceName}`,
+    description: `Injected simulated connection exhaustion spike on ${serviceName}. Alert fired, error trace logged, and AI Debugger investigation seeded.`,
+    href: `/debug?id=${invId}&repo=sample-project`,
+    target: { type: "service", id: serviceName, name: serviceName },
+    status: "failed",
+    details: {
+      metadata: {
+        incidentId,
+        traceId,
+        investigationId: invId,
+        service: serviceName,
+      },
+    },
+  });
+
+  saveStore(store);
+  return { incident, traceId };
+}
+
+export function addTelemetryLog(log: StructuredLogEntry): void {
+  const store = getStore();
+  if (!store.logs) store.logs = [];
+  store.logs.unshift(log);
+  if (store.logs.length > 200) store.logs = store.logs.slice(0, 200);
+  saveStore(store);
+}
+
+export function addTelemetryTrace(trace: DistributedTrace): void {
+  const store = getStore();
+  if (!store.traces) store.traces = [];
+  store.traces.unshift(trace);
+  if (store.traces.length > 50) store.traces = store.traces.slice(0, 50);
+  saveStore(store);
+}
+
 if (typeof window !== "undefined") {
   (window as any).__CODEATLAS_STORE__ = {
     getStore,
@@ -4910,5 +5578,14 @@ if (typeof window !== "undefined") {
     reindexRepository,
     applyAgentDiffToStore,
     mergePullRequest,
+    updateCircuitBreaker,
+    addAlertRule,
+    deleteAlertRule,
+    acknowledgeAlertIncident,
+    resolveAlertIncident,
+    snoozeAlertIncident,
+    simulateTelemetryIncident,
+    addTelemetryLog,
+    addTelemetryTrace,
   };
 }

@@ -47,6 +47,7 @@ import {
   Calendar,
   Filter,
   Eye,
+  Activity,
 } from "lucide-react";
 
 const ALL_MODULES: { id: ActivityModule; label: string; icon: any }[] = [
@@ -63,6 +64,7 @@ const ALL_MODULES: { id: ActivityModule; label: string; icon: any }[] = [
   { id: "change-impact", label: "Change Impact", icon: GitCompare },
   { id: "code-review", label: "Code Review", icon: GitPullRequest },
   { id: "settings", label: "Settings", icon: Sliders },
+  { id: "system-health", label: "System Health & Ops", icon: Activity },
   { id: "auth", label: "Auth", icon: Shield },
 ];
 
@@ -143,6 +145,8 @@ function getModuleIcon(module: ActivityModule) {
       return GitPullRequest;
     case "settings":
       return Sliders;
+    case "system-health":
+      return Activity;
     case "auth":
       return Shield;
     default:

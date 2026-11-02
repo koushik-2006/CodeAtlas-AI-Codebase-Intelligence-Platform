@@ -16,6 +16,7 @@ export type ActivityModule =
   | "change-impact"
   | "code-review"
   | "settings"
+  | "system-health"
   | "auth";
 
 export type ActivityAction =
@@ -95,3 +96,4 @@ export interface ActivityFilterState {
   dateRange: "today" | "7d" | "30d" | "all" | "custom";
   customDate?: string; // YYYY-MM-DD
 }
+

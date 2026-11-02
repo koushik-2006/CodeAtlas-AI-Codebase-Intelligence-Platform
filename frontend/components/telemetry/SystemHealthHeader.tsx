@@ -85,6 +85,12 @@ export function SystemHealthHeader({
               <StatusIcon className="w-3.5 h-3.5" />
               {badge.label}
             </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
+              Live checks
+            </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-300 border border-purple-500/30">
+              Simulated telemetry
+            </span>
           </div>
           <div className="flex flex-wrap items-center gap-4 mt-2 text-xs text-slate-400">
             <span className="flex items-center gap-1">

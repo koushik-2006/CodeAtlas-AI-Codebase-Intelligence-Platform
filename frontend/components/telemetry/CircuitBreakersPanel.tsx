@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { Shield, ZapOff, RotateCcw, AlertTriangle, CheckCircle, Info } from "lucide-react";
 import { CircuitBreakerStatus } from "@/types/observability";
-import { apiClient } from "@/services/api-client";
+import { updateCircuitBreaker } from "@/lib/demo/store";
 
 interface CircuitBreakersPanelProps {
   breakers: CircuitBreakerStatus[];
@@ -12,39 +12,39 @@ interface CircuitBreakersPanelProps {
 
 export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBreakersPanelProps) {
   const [loadingBreaker, setLoadingBreaker] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; type: "success" | "warning" } | null>(null);
 
-  const handleAction = async (name: string, action: "trip" | "reset") => {
+  const handleAction = (name: string, action: "trip" | "reset") => {
     setLoadingBreaker(`${name}_${action}`);
     setFeedback(null);
 
     try {
-      const res = await apiClient.post<any>("/api/telemetry/circuit-breaker", { name, action });
-      const json = res.data || {};
-      if (res.success && (json.success !== false)) {
-        setFeedback({ message: json.message || "Circuit breaker updated successfully", type: "success" });
-        onActionComplete();
-      } else {
-        setFeedback({
-          message: json.error?.message || json.error || res.message || `Failed to ${action} circuit breaker`,
-          type: "error",
-        });
-      }
+      const res = updateCircuitBreaker(name, action);
+      setFeedback({
+        message: res.message,
+        type: action === "trip" ? "warning" : "success",
+      });
+      onActionComplete();
     } catch (err: any) {
-      setFeedback({ message: err.message || "Failed to update circuit breaker", type: "error" });
+      setFeedback({ message: err.message || "Failed to update circuit breaker", type: "warning" });
     } finally {
-      setLoadingBreaker(null);
+      setTimeout(() => setLoadingBreaker(null), 150);
     }
   };
 
   return (
-    <div className="rounded-xl border border-white/10 bg-slate-900/50 backdrop-blur-sm p-5">
+    <div className="rounded-xl border border-white/10 bg-slate-900/50 backdrop-blur-sm p-5 shadow-sm">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-white/5">
         <div>
-          <h2 className="text-base font-semibold text-white flex items-center gap-2">
-            <Shield className="w-5 h-5 text-indigo-400" />
-            External Service Circuit Breakers
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-semibold text-white flex items-center gap-2">
+              <Shield className="w-5 h-5 text-indigo-400" />
+              External Service Circuit Breakers
+            </h2>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-300 border border-purple-500/30">
+              Simulated
+            </span>
+          </div>
           <p className="text-xs text-slate-400 mt-0.5">
             Automated fault isolation with configurable thresholds, cooldown windows, and SRE manual controls
           </p>
@@ -53,18 +53,26 @@ export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBrea
 
       {feedback && (
         <div
-          className={`mb-4 p-3 rounded-lg text-xs flex items-center gap-2 border ${
+          className={`mb-4 p-3 rounded-lg text-xs flex items-center justify-between gap-2 border animate-fade-in ${
             feedback.type === "success"
               ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/20"
-              : "bg-rose-500/10 text-rose-300 border-rose-500/20"
+              : "bg-amber-500/10 text-amber-300 border-amber-500/20"
           }`}
         >
-          {feedback.type === "success" ? (
-            <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-          ) : (
-            <AlertTriangle className="w-4 h-4 text-rose-400 flex-shrink-0" />
-          )}
-          <span>{feedback.message}</span>
+          <div className="flex items-center gap-2">
+            {feedback.type === "success" ? (
+              <CheckCircle className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+          <button
+            onClick={() => setFeedback(null)}
+            className="text-slate-400 hover:text-slate-200 text-xs ml-2"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
@@ -121,7 +129,7 @@ export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBrea
                         isOpen ? "bg-rose-500" : isHalfOpen ? "bg-amber-500" : "bg-indigo-500"
                       }`}
                       style={{
-                        width: `${Math.min(100, (cb.consecutiveFailures / cb.threshold) * 100)}%`,
+                        width: `${Math.min(100, (cb.consecutiveFailures / (cb.threshold || 5)) * 100)}%`,
                       }}
                     />
                   </div>
@@ -132,7 +140,7 @@ export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBrea
                   </div>
                   <div className="flex justify-between text-slate-400">
                     <span>Cooldown Duration:</span>
-                    <span className="font-mono text-slate-300">{cb.cooldownPeriodMs / 1000}s</span>
+                    <span className="font-mono text-slate-300">{(cb.cooldownPeriodMs || 30000) / 1000}s</span>
                   </div>
                   {cb.lastFailureTime && (
                     <div className="flex justify-between text-slate-400">
@@ -150,7 +158,7 @@ export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBrea
                   <button
                     onClick={() => handleAction(cb.name, "reset")}
                     disabled={loadingBreaker === `${cb.name}_reset`}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium transition-colors disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                     Reset to Closed
@@ -159,7 +167,7 @@ export function CircuitBreakersPanel({ breakers, onActionComplete }: CircuitBrea
                   <button
                     onClick={() => handleAction(cb.name, "trip")}
                     disabled={loadingBreaker === `${cb.name}_trip`}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-medium transition-colors disabled:opacity-50"
+                    className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold transition-colors disabled:opacity-50"
                   >
                     <ZapOff className="w-3.5 h-3.5" />
                     Trip Breaker (Test)
