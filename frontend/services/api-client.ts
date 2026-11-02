@@ -9,6 +9,8 @@ export interface RequestOptions extends RequestInit {
 
 class ApiClient {
   private baseUrl: string;
+  private inFlightGets = new Map<string, Promise<ApiResponse<any>>>();
+  private cache = new Map<string, { data: ApiResponse<any>; timestamp: number }>();
 
   constructor(baseUrl?: string) {
     this.baseUrl =
@@ -93,168 +95,203 @@ class ApiClient {
         };
       }
     }
-    const {
-      params,
-      timeoutMs = 15000,
-      retries = options.method === "GET" || !options.method ? 1 : 0,
-      headers: customHeaders = {},
-      ...fetchOptions
-    } = options;
 
-    const url = this.buildUrl(endpoint, params);
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const isGet = (!options.method || options.method === "GET") && !options.body;
+    const url = this.buildUrl(endpoint, options.params);
 
-    // Read stored token if available in browser
-    let storedToken: string | null = null;
-    if (typeof window !== "undefined") {
-      try {
-        storedToken = localStorage.getItem("codeatlas_access_token");
-      } catch {}
-    }
-
-    const headers: Record<string, string> = {
-      "Accept": "application/json",
-      "x-request-id": requestId,
-      ...(storedToken && !("Authorization" in customHeaders)
-        ? { "Authorization": `Bearer ${storedToken}` }
-        : {}),
-      ...(customHeaders as Record<string, string>),
-    };
-
-    if (fetchOptions.body && typeof fetchOptions.body === "string" && !headers["Content-Type"]) {
-      headers["Content-Type"] = "application/json";
-    }
-
-    let lastError: any = null;
-    let attempts = 0;
-    const maxAttempts = 1 + Math.max(0, retries);
-
-    while (attempts < maxAttempts) {
-      attempts++;
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      // Link external signal if provided
-      if (options.signal) {
-        options.signal.addEventListener("abort", () => controller.abort());
+    if (isGet) {
+      const cached = this.cache.get(url);
+      if (cached && Date.now() - cached.timestamp < 6000) {
+        return cached.data as ApiResponse<T>;
       }
-
-      try {
-        const res = await fetch(url, {
-          credentials: (fetchOptions as any).credentials || "include",
-          ...fetchOptions,
-          headers,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        let body: any = null;
-        const contentType = res.headers.get("content-type");
-        if (contentType && contentType.includes("application/json")) {
-          try {
-            body = await res.json();
-          } catch {
-            body = null;
-          }
-        }
-
-        if (!res.ok) {
-          let errMsg = `HTTP ${res.status}: ${res.statusText || "Request failed"}`;
-          if (body) {
-            if (typeof body.detail === "string") {
-              errMsg = body.detail;
-            } else if (Array.isArray(body.detail)) {
-              errMsg = body.detail
-                .map((d: any) => d.msg || (typeof d === "string" ? d : JSON.stringify(d)))
-                .join("; ");
-            } else if (body.error) {
-              if (typeof body.error === "string") {
-                errMsg = body.error;
-              } else if (typeof body.error === "object" && body.error.message) {
-                errMsg = body.error.message;
-              }
-            } else if (body.message) {
-              errMsg = body.message;
-            }
-          }
-          const httpErr: any = new Error(errMsg);
-          httpErr.status = res.status;
-          httpErr.body = body;
-          throw httpErr;
-        }
-
-        // Return structured response
-        if (body && typeof body === "object" && "success" in body) {
-          return {
-            success: Boolean(body.success),
-            data: body.data !== undefined ? body.data : body,
-            message: body.message,
-            timestamp: body.timestamp || new Date().toISOString(),
-          };
-        }
-
-        return {
-          success: true,
-          data: body as T,
-          timestamp: new Date().toISOString(),
-        };
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        lastError = err;
-
-        // If user cancelled, don't retry
-        if (err.name === "AbortError" && options.signal?.aborted) {
-          break;
-        }
-
-        // If another attempt remaining and safe request, short delay
-        if (attempts < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 300 * attempts));
-        }
+      const existingInFlight = this.inFlightGets.get(url);
+      if (existingInFlight) {
+        return existingInFlight as Promise<ApiResponse<T>>;
       }
+    } else {
+      this.cache.clear();
     }
 
-    let message = lastError?.message || "Failed to complete API request";
-    const isNetworkError =
-      !lastError?.status &&
-      (lastError?.name === "TypeError" ||
-       message.includes("Failed to fetch") ||
-       message.includes("NetworkError") ||
-       message.includes("ECONNREFUSED") ||
-       message.includes("Failed to complete API request") ||
-       lastError?.name === "AbortError");
+    const fetchPromise = (async (): Promise<ApiResponse<T>> => {
+      const {
+        timeoutMs = 12000,
+        retries = isGet ? 1 : 0,
+        headers: customHeaders = {},
+        ...fetchOptions
+      } = options;
 
-    if (isNetworkError) {
-      if (typeof window !== "undefined" && url.includes("localhost:8000")) {
+      const requestId = `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+      // Read stored token if available in browser
+      let storedToken: string | null = null;
+      if (typeof window !== "undefined") {
         try {
-          const cleanEp = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-          const localUrl = `/api${cleanEp.startsWith("/api") ? cleanEp.substring(4) : cleanEp}`;
-          const fallbackRes = await fetch(localUrl, {
+          storedToken = localStorage.getItem("codeatlas_access_token");
+        } catch {}
+      }
+
+      const headers: Record<string, string> = {
+        "Accept": "application/json",
+        "x-request-id": requestId,
+        ...(storedToken && !("Authorization" in customHeaders)
+          ? { "Authorization": `Bearer ${storedToken}` }
+          : {}),
+        ...(customHeaders as Record<string, string>),
+      };
+
+      if (fetchOptions.body && typeof fetchOptions.body === "string" && !headers["Content-Type"]) {
+        headers["Content-Type"] = "application/json";
+      }
+
+      let lastError: any = null;
+      let attempts = 0;
+      const maxAttempts = 1 + Math.max(0, retries);
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        // Link external signal if provided
+        if (options.signal) {
+          options.signal.addEventListener("abort", () => controller.abort());
+        }
+
+        try {
+          const res = await fetch(url, {
             credentials: (fetchOptions as any).credentials || "include",
             ...fetchOptions,
             headers,
+            signal: controller.signal,
           });
-          if (fallbackRes.ok) {
-            const fbBody = await fallbackRes.json();
-            return {
-              success: fbBody?.success !== false,
-              data: fbBody?.data !== undefined ? fbBody.data : fbBody,
-              message: fbBody?.message,
-              timestamp: fbBody?.timestamp || new Date().toISOString(),
-            };
+
+          clearTimeout(timeoutId);
+
+          let body: any = null;
+          const contentType = res.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            try {
+              body = await res.json();
+            } catch {
+              body = null;
+            }
           }
-        } catch {}
+
+          if (!res.ok) {
+            let errMsg = `HTTP ${res.status}: ${res.statusText || "Request failed"}`;
+            if (body) {
+              if (typeof body.detail === "string") {
+                errMsg = body.detail;
+              } else if (Array.isArray(body.detail)) {
+                errMsg = body.detail
+                  .map((d: any) => d.msg || (typeof d === "string" ? d : JSON.stringify(d)))
+                  .join("; ");
+              } else if (body.error) {
+                if (typeof body.error === "string") {
+                  errMsg = body.error;
+                } else if (typeof body.error === "object" && body.error.message) {
+                  errMsg = body.error.message;
+                }
+              } else if (body.message) {
+                errMsg = body.message;
+              }
+            }
+            const httpErr: any = new Error(errMsg);
+            httpErr.status = res.status;
+            httpErr.body = body;
+            throw httpErr;
+          }
+
+          // Return structured response
+          const responseObj: ApiResponse<T> =
+            body && typeof body === "object" && "success" in body
+              ? {
+                  success: Boolean(body.success),
+                  data: body.data !== undefined ? body.data : body,
+                  message: body.message,
+                  timestamp: body.timestamp || new Date().toISOString(),
+                }
+              : {
+                  success: true,
+                  data: body as T,
+                  timestamp: new Date().toISOString(),
+                };
+
+          if (isGet) {
+            this.cache.set(url, { data: responseObj, timestamp: Date.now() });
+          }
+          return responseObj;
+        } catch (err: any) {
+          clearTimeout(timeoutId);
+          lastError = err;
+
+          // If user cancelled, don't retry
+          if (err.name === "AbortError" && options.signal?.aborted) {
+            break;
+          }
+
+          // If another attempt remaining and safe request, short delay
+          if (attempts < maxAttempts) {
+            await new Promise((r) => setTimeout(r, 200 * attempts));
+          }
+        }
       }
-      message = "Unable to connect to the server. Please try again.";
+
+      let message = lastError?.message || "Failed to complete API request";
+      const isNetworkError =
+        !lastError?.status &&
+        (lastError?.name === "TypeError" ||
+         message.includes("Failed to fetch") ||
+         message.includes("NetworkError") ||
+         message.includes("ECONNREFUSED") ||
+         message.includes("Failed to complete API request") ||
+         lastError?.name === "AbortError");
+
+      if (isNetworkError) {
+        if (typeof window !== "undefined" && url.includes("localhost:8000")) {
+          try {
+            const cleanEp = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+            const localUrl = `/api${cleanEp.startsWith("/api") ? cleanEp.substring(4) : cleanEp}`;
+            const fallbackRes = await fetch(localUrl, {
+              credentials: (fetchOptions as any).credentials || "include",
+              ...fetchOptions,
+              headers,
+            });
+            if (fallbackRes.ok) {
+              const fbBody = await fallbackRes.json();
+              const fbResponse: ApiResponse<T> = {
+                success: fbBody?.success !== false,
+                data: fbBody?.data !== undefined ? fbBody.data : fbBody,
+                message: fbBody?.message,
+                timestamp: fbBody?.timestamp || new Date().toISOString(),
+              };
+              if (isGet) {
+                this.cache.set(url, { data: fbResponse, timestamp: Date.now() });
+              }
+              return fbResponse;
+            }
+          } catch {}
+        }
+        message = "Unable to connect to the server. Please try again.";
+      }
+
+      return {
+        success: false,
+        data: null as any,
+        message,
+        timestamp: new Date().toISOString(),
+      };
+    })().finally(() => {
+      if (isGet) {
+        this.inFlightGets.delete(url);
+      }
+    });
+
+    if (isGet) {
+      this.inFlightGets.set(url, fetchPromise);
     }
 
-    return {
-      success: false,
-      data: null as any,
-      message,
-      timestamp: new Date().toISOString(),
-    };
+    return fetchPromise;
   }
 
   async get<T>(endpoint: string, options?: RequestOptions): Promise<ApiResponse<T>> {

@@ -284,25 +284,34 @@ class GitHubClient {
     if (!accessToken || accessToken.startsWith("sandbox_") || accessToken.startsWith("gho_mock_") || accessToken === "sandbox") {
       return DEVELOPER_SANDBOX_REPOS;
     }
-    const res = await fetch(
-      `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github.v3+json",
-          "User-Agent": "CodeAtlas-Intelligence",
-        },
-      }
-    );
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3500);
+    try {
+      const res = await fetch(
+        `https://api.github.com/user/repos?per_page=${perPage}&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
+        {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/vnd.github.v3+json",
+            "User-Agent": "CodeAtlas-Intelligence",
+          },
+          signal: controller.signal,
+        }
+      );
+      clearTimeout(timeout);
 
-    if (!res.ok) {
-      if (res.status === 401) {
-        throw new Error("GitHub access token expired or revoked (401). Please reconnect GitHub.");
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("GitHub access token expired or revoked (401). Please reconnect GitHub.");
+        }
+        throw new Error(`Failed to fetch repositories (${res.status}): ${res.statusText}`);
       }
-      throw new Error(`Failed to fetch repositories (${res.status}): ${res.statusText}`);
+
+      return await res.json();
+    } catch (err: any) {
+      clearTimeout(timeout);
+      throw err;
     }
-
-    return await res.json();
   }
 
   async getSingleRepository(accessToken: string, owner: string, repo: string): Promise<any> {

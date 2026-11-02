@@ -3,6 +3,9 @@ import { db } from "@/lib/server/db";
 import { github, DEVELOPER_SANDBOX_REPOS, GitHubRepositoryItem } from "@/lib/server/github";
 import { getAuthenticatedUserId } from "@/lib/server/auth-helper";
 
+const reposCache = new Map<string, { data: GitHubRepositoryItem[]; timestamp: number }>();
+const REPOS_CACHE_TTL = 60 * 1000; // 1 minute
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const search = url.searchParams.get("search")?.toLowerCase();
@@ -33,23 +36,22 @@ export async function GET(request: Request) {
   let tokenExpired = false;
 
   if (account.accessToken && account.accessToken !== "sandbox_demo_token_codeatlas") {
-    try {
-      let pageNum = 1;
-      const allFetched: GitHubRepositoryItem[] = [];
-      while (pageNum <= 3) {
-        const batch = await github.getUserRepositories(account.accessToken, pageNum, 100);
-        allFetched.push(...batch);
-        if (batch.length < 100) break;
-        pageNum++;
+    const cached = reposCache.get(account.accessToken);
+    if (cached && Date.now() - cached.timestamp < REPOS_CACHE_TTL) {
+      rawRepos = cached.data;
+    } else {
+      try {
+        const batch = await github.getUserRepositories(account.accessToken, 1, 100);
+        rawRepos = batch;
+        reposCache.set(account.accessToken, { data: batch, timestamp: Date.now() });
+      } catch (err: any) {
+        if (err.message && err.message.includes("401")) {
+          tokenExpired = true;
+        }
+        console.warn("GitHub fetch note, using cached or developer sandbox:", err.message);
+        rawRepos = cached?.data || DEVELOPER_SANDBOX_REPOS;
+        isSandbox = !cached?.data;
       }
-      rawRepos = allFetched;
-    } catch (err: any) {
-      if (err.message && err.message.includes("401")) {
-        tokenExpired = true;
-      }
-      console.warn("Failed to fetch live GitHub repos, falling back to sandbox:", err.message);
-      rawRepos = DEVELOPER_SANDBOX_REPOS;
-      isSandbox = true;
     }
   } else {
     rawRepos = DEVELOPER_SANDBOX_REPOS;

@@ -12,20 +12,32 @@ export type WorkspaceItem = DbWorkspace & {
 
 const STORAGE_KEY = "codeatlas_active_workspace_id";
 
+let cachedWorkspaceList: WorkspaceItem[] = [];
+let cachedActiveId: string = "";
+
 export function useWorkspaces() {
-  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>([]);
-  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>("");
-  const [loading, setLoading] = useState(true);
+  const [workspaces, setWorkspaces] = useState<WorkspaceItem[]>(cachedWorkspaceList);
+  const [activeWorkspaceId, setActiveWorkspaceIdState] = useState<string>(() => {
+    if (cachedActiveId) return cachedActiveId;
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(STORAGE_KEY) || "";
+    }
+    return "";
+  });
+  const [loading, setLoading] = useState(cachedWorkspaceList.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   const fetchWorkspaces = useCallback(async () => {
     try {
-      setLoading(true);
+      if (cachedWorkspaceList.length === 0) {
+        setLoading(true);
+      }
       setError(null);
       const res = await apiClient.get<any>("/api/workspaces");
       const json = res.data || {};
       if (res.success && json.workspaces) {
         const list: WorkspaceItem[] = json.workspaces;
+        cachedWorkspaceList = [...list];
         setWorkspaces([...list]);
 
         // Resolve active workspace from local storage or default to first team workspace / personal
@@ -33,10 +45,12 @@ export function useWorkspaces() {
         const exists = list.find((w) => w.id === savedId);
 
         if (exists) {
+          cachedActiveId = exists.id;
           setActiveWorkspaceIdState(exists.id);
         } else if (list.length > 0) {
           // Prefer team workspace first, else personal
           const preferred = list.find((w) => !w.isPersonal) || list[0];
+          cachedActiveId = preferred.id;
           setActiveWorkspaceIdState(preferred.id);
           if (typeof window !== "undefined") {
             localStorage.setItem(STORAGE_KEY, preferred.id);

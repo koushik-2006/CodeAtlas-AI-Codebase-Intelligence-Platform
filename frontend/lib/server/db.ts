@@ -1172,6 +1172,10 @@ const SEED_AGENT_RUNS: AgentRun[] = [
   },
 ];
 
+const globalForDb = globalThis as unknown as {
+  __codeatlas_db_schema?: CodeAtlasDatabaseSchema;
+};
+
 class DatabaseManager {
   private schema: CodeAtlasDatabaseSchema | null = null;
 
@@ -1183,6 +1187,10 @@ class DatabaseManager {
 
   private load(): CodeAtlasDatabaseSchema {
     if (this.schema) return this.schema;
+    if (globalForDb.__codeatlas_db_schema) {
+      this.schema = globalForDb.__codeatlas_db_schema;
+      return this.schema;
+    }
 
     this.ensureDir();
 
@@ -1356,25 +1364,14 @@ class DatabaseManager {
   }
 
   private save(data: CodeAtlasDatabaseSchema) {
-    this.ensureDir();
-    const tempFile = `${DB_FILE}.${Date.now()}.${Math.random().toString(36).slice(2, 8)}.tmp`;
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), "utf-8");
-    try {
-      fs.renameSync(tempFile, DB_FILE);
-    } catch (e: any) {
-      if (e.code === "EPERM" || e.code === "EBUSY") {
-        // Fallback for Windows file locks / OneDrive file watcher
-        try {
-          fs.copyFileSync(tempFile, DB_FILE);
-          fs.unlinkSync(tempFile);
-        } catch {
-          fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), "utf-8");
-        }
-      } else {
-        throw e;
-      }
-    }
     this.schema = data;
+    globalForDb.__codeatlas_db_schema = data;
+    this.ensureDir();
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(data), "utf-8");
+    } catch (e: any) {
+      console.warn("DB file write warning:", e?.message || e);
+    }
   }
 
   // --- User Operations ---
