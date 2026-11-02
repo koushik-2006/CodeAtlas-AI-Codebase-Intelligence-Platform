@@ -32,6 +32,7 @@ interface AuthContextValue {
   checkEmailVerified: () => Promise<{ verified: boolean; user?: AuthUser; error?: string }>;
   resendEmailVerification: () => Promise<EmailAuthResponse>;
   enterDemoMode: () => void;
+  enterGitHubSandbox: (customUser?: AuthUser) => void;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
@@ -251,6 +252,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(DEMO_USER);
   };
 
+  const enterGitHubSandbox = useCallback((customUser?: AuthUser) => {
+    const ghUser = customUser || authService.createGitHubSandboxUser();
+    authService.persistUser(ghUser);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("codeatlas_active_demo_session", "true");
+        localStorage.setItem("codeatlas_active_session_type", "github_sandbox");
+        localStorage.setItem("codeatlas-auth-user", JSON.stringify(ghUser));
+        sessionStorage.setItem("codeatlas_github_token", "gho_sandbox_presentation_token");
+        sessionStorage.setItem("github_access_token", "gho_sandbox_presentation_token");
+        localStorage.setItem(
+          "codeatlas_github_profile",
+          JSON.stringify({ username: ghUser.username, avatar: ghUser.avatar })
+        );
+      } catch {}
+    }
+    setUser(ghUser);
+  }, []);
+
   const logout = async () => {
     setIsLoading(true);
     try {
@@ -278,6 +298,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkEmailVerified,
         resendEmailVerification,
         enterDemoMode,
+        enterGitHubSandbox,
         logout,
         refreshSession,
       }}

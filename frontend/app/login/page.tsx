@@ -55,6 +55,7 @@ function LoginFormContent() {
     logout,
     loginWithGoogle,
     loginWithGitHub,
+    enterGitHubSandbox,
     loginWithCredentials,
     register,
     verifyOtp,
@@ -379,50 +380,20 @@ function LoginFormContent() {
     clearMessages();
     setIsSubmitting(true);
 
-    const activateFallback = () => {
-      const fallbackUser = authService.createGitHubSandboxUser();
-      authService.persistUser(fallbackUser);
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("codeatlas_active_demo_session", "true");
-          localStorage.setItem("codeatlas-auth-user", JSON.stringify(fallbackUser));
-          localStorage.setItem("codeatlas_active_session_type", "github_sandbox");
-          sessionStorage.setItem("codeatlas_github_token", "gho_sandbox_presentation_token");
-          sessionStorage.setItem("github_access_token", "gho_sandbox_presentation_token");
-          localStorage.setItem(
-            "codeatlas_github_profile",
-            JSON.stringify({ username: fallbackUser.username, avatar: fallbackUser.avatar })
-          );
-        } catch {}
-      }
-      completeAuthSuccess();
-    };
-
-    // If Firebase popup hangs on __/auth/handler due to Chrome third-party cookie blocking,
-    // automatically activate the fallback within 2.5 seconds so the user is never stuck!
-    let finished = false;
-    const timeoutTimer = setTimeout(() => {
-      if (!finished) {
-        console.warn("Firebase GitHub popup timed out or hung on cross-site handler. Activating GitHub fallback session.");
-        activateFallback();
-        setIsSubmitting(false);
-      }
-    }, 2500);
-
     try {
       const res = await loginWithGitHub();
-      finished = true;
-      clearTimeout(timeoutTimer);
       if (res.success && res.user) {
         completeAuthSuccess();
         return;
       }
-      activateFallback();
+      // If Firebase popup was cancelled, closed, or hung, activate GitHub Developer session
+      console.warn("GitHub sign-in fallback activated:", res.error);
+      enterGitHubSandbox();
+      completeAuthSuccess();
     } catch (err: any) {
-      finished = true;
-      clearTimeout(timeoutTimer);
       console.warn("GitHub sign in encountered an exception; activating GitHub Developer fallback:", err);
-      activateFallback();
+      enterGitHubSandbox();
+      completeAuthSuccess();
     } finally {
       setIsSubmitting(false);
     }
