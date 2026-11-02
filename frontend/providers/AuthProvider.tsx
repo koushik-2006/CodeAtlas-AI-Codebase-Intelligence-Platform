@@ -92,7 +92,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   localStorage.getItem("codeatlas_demo_active_user") === "logged_out";
 
                 if (isDemoSession && !isLoggedOut) {
-                  setUser(DEMO_USER);
+                  let activeUser = DEMO_USER;
+                  try {
+                    const rawStored = localStorage.getItem("codeatlas-auth-user");
+                    if (rawStored) activeUser = JSON.parse(rawStored);
+                  } catch {}
+                  setUser(activeUser);
                 } else {
                   setUser(null);
                 }

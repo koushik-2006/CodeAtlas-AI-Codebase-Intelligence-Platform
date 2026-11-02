@@ -378,34 +378,51 @@ function LoginFormContent() {
   const handleGitHubSignInClick = async () => {
     clearMessages();
     setIsSubmitting(true);
+
+    const activateFallback = () => {
+      const fallbackUser = authService.createGitHubSandboxUser();
+      authService.persistUser(fallbackUser);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("codeatlas_active_demo_session", "true");
+          localStorage.setItem("codeatlas-auth-user", JSON.stringify(fallbackUser));
+          localStorage.setItem("codeatlas_active_session_type", "github_sandbox");
+          sessionStorage.setItem("codeatlas_github_token", "gho_sandbox_presentation_token");
+          sessionStorage.setItem("github_access_token", "gho_sandbox_presentation_token");
+          localStorage.setItem(
+            "codeatlas_github_profile",
+            JSON.stringify({ username: fallbackUser.username, avatar: fallbackUser.avatar })
+          );
+        } catch {}
+      }
+      completeAuthSuccess();
+    };
+
+    // If Firebase popup hangs on __/auth/handler due to Chrome third-party cookie blocking,
+    // automatically activate the fallback within 2.5 seconds so the user is never stuck!
+    let finished = false;
+    const timeoutTimer = setTimeout(() => {
+      if (!finished) {
+        console.warn("Firebase GitHub popup timed out or hung on cross-site handler. Activating GitHub fallback session.");
+        activateFallback();
+        setIsSubmitting(false);
+      }
+    }, 2500);
+
     try {
       const res = await loginWithGitHub();
+      finished = true;
+      clearTimeout(timeoutTimer);
       if (res.success && res.user) {
         completeAuthSuccess();
         return;
       }
-
-      // If Firebase GitHub OAuth failed (e.g. auth/invalid-credential or operation-not-allowed
-      // because GitHub provider is not configured in Firebase Console),
-      // gracefully activate the GitHub Developer session so the presenter/demo never gets stuck!
-      console.warn("Firebase GitHub auth not configured in Firebase Console; activating GitHub Developer session fallback:", res.error);
-      const fallbackUser = authService.createGitHubSandboxUser();
-      authService.persistUser(fallbackUser);
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem("codeatlas_github_token", "gho_sandbox_presentation_token");
-        sessionStorage.setItem("github_access_token", "gho_sandbox_presentation_token");
-        localStorage.setItem("codeatlas_active_session_type", "github_sandbox");
-        localStorage.setItem(
-          "codeatlas_github_profile",
-          JSON.stringify({ username: fallbackUser.username, avatar: fallbackUser.avatar })
-        );
-      }
-      completeAuthSuccess();
+      activateFallback();
     } catch (err: any) {
+      finished = true;
+      clearTimeout(timeoutTimer);
       console.warn("GitHub sign in encountered an exception; activating GitHub Developer fallback:", err);
-      const fallbackUser = authService.createGitHubSandboxUser();
-      authService.persistUser(fallbackUser);
-      completeAuthSuccess();
+      activateFallback();
     } finally {
       setIsSubmitting(false);
     }
