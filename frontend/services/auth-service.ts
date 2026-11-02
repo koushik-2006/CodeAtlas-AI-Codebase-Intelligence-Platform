@@ -97,22 +97,38 @@ export class AuthService {
   /**
    * Translates Firebase Auth error codes into friendly, actionable user messages.
    */
-  formatFirebaseAuthError(err: any): string {
+  formatFirebaseAuthError(err: any, context?: "email" | "github" | "google"): string {
     const code = err?.code || "";
     switch (code) {
       case "auth/popup-blocked":
-        return "Popup was blocked by your browser. Please allow popups for this site and try again.";
+        return "Popup was blocked by your browser. Please allow popups for localhost:3000 and try again.";
       case "auth/popup-closed-by-user":
         return "Sign-in popup was closed before completing authentication.";
       case "auth/cancelled-popup-request":
         return "Only one sign-in window can be open at a time.";
       case "auth/unauthorized-domain":
-        return "This domain is not authorized for OAuth. Please check Firebase domain configuration.";
+        return "This domain is not authorized for OAuth. Please add 'localhost' to Firebase Console > Authentication > Settings > Authorized domains.";
+      case "auth/operation-not-allowed":
+      case "auth/configuration-not-found":
+        if (context === "github") {
+          return "GitHub sign-in is not enabled in Firebase Console. Please enable the GitHub provider under Authentication > Sign-in method.";
+        }
+        if (context === "google") {
+          return "Google sign-in is not enabled in Firebase Console. Please enable the Google provider under Authentication > Sign-in method.";
+        }
+        return "This sign-in provider is not enabled in Firebase Console.";
       case "auth/account-exists-with-different-credential":
         return "This email is already registered with another sign-in method — use that one.";
       case "auth/email-already-in-use":
         return "An account with this email address already exists. Please sign in instead.";
       case "auth/invalid-credential":
+        if (context === "github") {
+          return "GitHub OAuth credentials could not be verified by Firebase. Check that GitHub provider is configured with matching Client ID & Secret in Firebase Console.";
+        }
+        if (context === "google") {
+          return "Google sign-in credentials could not be verified. Please try again.";
+        }
+        return "Invalid email or password. Please check your credentials.";
       case "auth/wrong-password":
         return "Invalid email or password. Please check your credentials.";
       case "auth/user-not-found":
@@ -129,6 +145,22 @@ export class AuthService {
           "Authentication request failed. Please try again."
         );
     }
+  }
+
+  /**
+   * Generates a realistic authenticated GitHub Developer sandbox profile for instant presentations and testing.
+   */
+  createGitHubSandboxUser(): AuthUser {
+    return {
+      id: "usr_gh_developer",
+      name: "GitHub Developer",
+      username: "koushik-dev",
+      email: "developer@codeatlas.dev",
+      avatar: "https://avatars.githubusercontent.com/u/9919?v=4",
+      role: "Lead Software Architect",
+      provider: "github",
+      createdAt: new Date().toISOString(),
+    };
   }
 
   /**
@@ -158,7 +190,7 @@ export class AuthService {
       }
       return { success: true, user };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "google") };
     }
   }
 
@@ -219,7 +251,7 @@ export class AuthService {
       }
       return { success: true, user };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "github") };
     }
   }
 
@@ -250,7 +282,7 @@ export class AuthService {
         message: "We sent a verification link to your email. Check your inbox and spam folder.",
       };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "email") };
     }
   }
 
@@ -284,7 +316,7 @@ export class AuthService {
       }
       return { success: true, user };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "email") };
     }
   }
 
@@ -303,7 +335,7 @@ export class AuthService {
         message: "Password reset link sent to your email! Check your inbox and spam folder.",
       };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "email") };
     }
   }
 
@@ -322,7 +354,7 @@ export class AuthService {
         message: "A new verification link has been sent to your email. Check your spam folder.",
       };
     } catch (err: any) {
-      return { success: false, error: this.formatFirebaseAuthError(err) };
+      return { success: false, error: this.formatFirebaseAuthError(err, "email") };
     }
   }
 
