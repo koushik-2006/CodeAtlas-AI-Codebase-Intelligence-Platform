@@ -29,11 +29,13 @@ export async function POST(request: Request) {
     }
 
     const userId = getAuthenticatedUserId(request);
+    const conversationHistory = (body as any).history || (body as any).conversationHistory || [];
 
     const result = await ragService.answerQuestion({
       repositoryId: repositoryId || "sample-project",
       question: question.trim(),
       userId,
+      conversationHistory,
     });
 
     return NextResponse.json({

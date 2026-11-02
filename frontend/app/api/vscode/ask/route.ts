@@ -70,10 +70,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Single repository RAG query
+    const conversationHistory = (body as any).history || (body as any).conversationHistory || [];
     const singleResult = await ragService.answerQuestion({
       repositoryId,
       question: enrichedQuestion,
       userId,
+      conversationHistory,
     });
 
     const responseData: VsCodeAskResponse = {

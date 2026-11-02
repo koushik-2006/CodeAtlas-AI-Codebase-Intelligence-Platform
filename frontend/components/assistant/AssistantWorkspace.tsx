@@ -288,9 +288,14 @@ export function AssistantWorkspace() {
     abortControllerRef.current = controller;
 
     try {
-      // 1. Build system instruction with optional repository context
+      // 1. Build system instruction with conversational awareness
+      const isGreetingOrCasual =
+        /^(hi|hello|hey|greetings|good\s+(morning|afternoon|evening|day)|howdy|sup|yo|hiya|hola|how\s+are\s+you|who\s+are\s+you|what\s+can\s+you\s+do|help|thanks|thank\s+you|cool|ok|okay)[\s!.,?]*$/i.test(
+          q
+        );
+
       let repoContext = "";
-      if (selectedRepo && selectedRepo !== "none") {
+      if (!isGreetingOrCasual && selectedRepo && selectedRepo !== "none") {
         if (selectedRepo.includes("/")) {
           // Real GitHub repo (e.g. "owner/repo")
           repoContext = await aiService.fetchGitHubRepoContext(selectedRepo, q);
@@ -299,12 +304,13 @@ export function AssistantWorkspace() {
         }
       }
 
-      const baseInstruction =
-        "You are CodeAtlas AI, an expert software architect and codebase intelligence assistant. " +
-        "You answer questions clearly, thoroughly, and helpfully. " +
-        "Format code with Markdown code blocks indicating the programming language. " +
-        "When explaining or referencing repository files, ALWAYS cite exact file paths and line ranges in the format `file/path.ext:start-end`.\n" +
-        repoContext;
+      const baseInstruction = isGreetingOrCasual
+        ? "You are CodeAtlas AI, an expert software engineering assistant (similar to ChatGPT and GitHub Copilot). Respond in a natural, warm, and helpful conversational tone. Welcome the user and invite them to explore codebases, write/debug code, or ask general programming questions. Do NOT cite or dump repository files for greetings."
+        : "You are CodeAtlas AI, an expert software architect and codebase intelligence assistant (similar to ChatGPT and GitHub Copilot). " +
+          "You answer questions clearly, thoroughly, and helpfully like ChatGPT. " +
+          "Format code with Markdown code blocks indicating the programming language. " +
+          "When explaining or referencing repository files, cite exact file paths and line ranges in the format `file/path.ext:start-end`.\n" +
+          repoContext;
 
       // 2. Format history for Gemini (sanitizing out initial model greetings)
       const validMessages = currentConversation.messages.filter((m) => !m.isError && m.text.trim());
@@ -342,41 +348,46 @@ export function AssistantWorkspace() {
         signal: controller.signal,
       });
 
-      // 4. Extract citations from response
-      const fileMatches = finalAccumulated.matchAll(/`([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)(?::(\d+)(?:-(\d+))?)?`/g);
-      const extractedCitations: Array<{ file: string; lineRange: string; startLine?: number; endLine?: number }> = [];
-      const seen = new Set<string>();
+      // 4. Extract citations from response (only for non-greeting codebase queries)
+      if (!isGreetingOrCasual) {
+        const fileMatches = finalAccumulated.matchAll(/`([a-zA-Z0-9_\-./]+\.[a-zA-Z0-9]+)(?::(\d+)(?:-(\d+))?)?`/g);
+        const extractedCitations: Array<{ file: string; lineRange: string; startLine?: number; endLine?: number }> = [];
+        const seen = new Set<string>();
 
-      for (const match of fileMatches) {
-        const file = match[1];
-        if (file.includes("/") && (file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".py") || file.endsWith(".js") || file.endsWith(".json"))) {
-          if (!seen.has(file)) {
-            seen.add(file);
-            const start = match[2] ? parseInt(match[2], 10) : 1;
-            const end = match[3] ? parseInt(match[3], 10) : start;
-            extractedCitations.push({
-              file,
-              lineRange: match[2] ? `${start}-${end}` : "1-30",
-              startLine: start,
-              endLine: end,
-            });
+        for (const match of fileMatches) {
+          const file = match[1];
+          if (
+            file.includes("/") &&
+            (file.endsWith(".ts") || file.endsWith(".tsx") || file.endsWith(".py") || file.endsWith(".js") || file.endsWith(".json"))
+          ) {
+            if (!seen.has(file)) {
+              seen.add(file);
+              const start = match[2] ? parseInt(match[2], 10) : 1;
+              const end = match[3] ? parseInt(match[3], 10) : (match[2] ? start + 10 : 30);
+              extractedCitations.push({
+                file,
+                lineRange: match[2] ? `${start}-${end}` : "1-30",
+                startLine: start,
+                endLine: end,
+              });
+            }
           }
         }
-      }
 
-      if (extractedCitations.length > 0) {
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === activeConversationId
-              ? {
-                  ...c,
-                  messages: c.messages.map((m) =>
-                    m.id === aiMessageId ? { ...m, citations: extractedCitations.slice(0, 5) } : m
-                  ),
-                }
-              : c
-          )
-        );
+        if (extractedCitations.length > 0) {
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConversationId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) =>
+                      m.id === aiMessageId ? { ...m, citations: extractedCitations.slice(0, 5) } : m
+                    ),
+                  }
+                : c
+            )
+          );
+        }
       }
     } catch (err: any) {
       if (err?.name === "AbortError" || controller.signal.aborted) {

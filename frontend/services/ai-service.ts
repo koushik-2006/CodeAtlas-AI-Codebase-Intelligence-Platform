@@ -222,6 +222,7 @@ class AIService {
         body: JSON.stringify({
           question: message,
           repositoryId: repositoryId && repositoryId !== "none" ? repositoryId : "sample-project",
+          history,
         }),
         signal,
       });
@@ -261,6 +262,7 @@ class AIService {
         body: JSON.stringify({
           question: message,
           repositoryId: repositoryId && repositoryId !== "none" ? repositoryId : "sample-project",
+          history,
         }),
         signal,
       });
