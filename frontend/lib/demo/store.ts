@@ -10,6 +10,15 @@ import { SAMPLE_PROJECT_TREE, SAMPLE_PROJECT_CODE } from "@/lib/sample-repositor
 import { STANDARD_WORKFLOWS, STEP_DEFINITIONS, synthesizeDiff } from "@/lib/demo/agent-engine";
 import { AgentRun, AgentPolicy, WorkflowTemplate } from "@/types/agent";
 import { SavedImpactAnalysis } from "@/types/impact";
+import {
+  ActivityEvent,
+  ActivityModule,
+  ActivityAction,
+  ActivityStatus,
+  ActivityActor,
+  ActivityTarget,
+  ActivityFilterState,
+} from "@/types/activity";
 
 export interface StoreUser {
   id: string;
@@ -28,6 +37,34 @@ export const DEMO_USER: StoreUser = {
   role: "Lead Systems Architect",
   provider: "demo",
 };
+
+export function getActiveUser(): ActivityActor {
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem("codeatlas-auth-user") || localStorage.getItem("codeatlas-auth-session");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const u = parsed.user || parsed;
+        if (u && (u.name || u.email || u.displayName)) {
+          return {
+            id: u.id || u.uid || "usr_demo",
+            name: u.displayName || u.name || "Demo User",
+            avatar: u.photoURL || u.avatar || DEMO_USER.avatar,
+            email: u.email || DEMO_USER.email,
+            role: u.role || "Lead Systems Architect",
+          };
+        }
+      }
+    } catch {}
+  }
+  return {
+    id: DEMO_USER.id,
+    name: DEMO_USER.name,
+    avatar: DEMO_USER.avatar,
+    email: DEMO_USER.email,
+    role: DEMO_USER.role,
+  };
+}
 
 export interface FileTreeItem {
   id: string;
@@ -66,7 +103,7 @@ export interface DemoStoreData {
   refactoringHistory?: any[];
   debtOverviews: Record<string, any>;
   notifications: any[];
-  activities: any[];
+  activities: ActivityEvent[];
   userSettings: any;
   circuitBreakers: Record<string, any>;
   alertRules: any[];
@@ -97,7 +134,7 @@ export interface CodeAnalysisHistoryItem {
   repositoryId?: string;
 }
 
-const STORE_VERSION = 6;
+const STORE_VERSION = 7;
 
 /**
  * Generates the complete initial seeded dataset across 3 workspaces and 7 repositories.
@@ -1610,28 +1647,352 @@ def calculate_metric(raw_data: Dict[str, Any], offset: float = 0.0) -> float:
     },
   ];
 
-  const activities = [
+  const now = Date.now();
+  const activities: ActivityEvent[] = [
     {
-      id: "act_1",
-      userId: "usr_demo",
-      type: "review_completed",
-      title: "Completed Code Review on PR #101",
-      description: "AI review flagged WebAuthn challenge replay vulnerability.",
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      status: "warning",
-      href: "/code-review",
-      linkText: "View Review",
+      id: "act_seed_1",
+      time: new Date(now - 1000 * 60 * 15).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 15).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "code-review",
+      action: "merge",
+      type: "pr_merged",
+      target: { type: "pr", id: "pr_101", name: "PR #101" },
+      status: "success",
+      title: "Merged PR #101: WebAuthn Nonce Invalidation",
+      shortDescription: "Applied atomic redis challenge eviction diff to demo-auth-service main branch.",
+      description: "Successfully merged pull request #101 into main branch. Automated validation passed 18/18 tests.",
+      link: "/code-review?pr=pr_101",
+      href: "/code-review?pr=pr_101",
+      repositoryId: "sample-project",
+      details: {
+        diff: `--- a/src/services/auth.ts\n+++ b/src/services/auth.ts\n@@ -24,7 +24,8 @@ export async function verifyAssertion(assertion) {\n-  const valid = checkSignature(assertion);\n+  const valid = checkSignature(assertion);\n+  await nonceCache.invalidate(assertion.challenge);\n   return valid;`,
+      },
     },
     {
-      id: "act_2",
-      userId: "usr_demo",
-      type: "indexing_completed",
-      title: "Indexed repository demo-auth-service",
-      description: "Resolved 24 AST symbols and 15 cross-file relationships.",
-      timestamp: new Date(Date.now() - 7200000).toISOString(),
+      id: "act_seed_2",
+      time: new Date(now - 1000 * 60 * 45).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 45).toISOString(),
+      actor: {
+        id: "usr_alex",
+        name: "Alex Chen",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+        email: "alex.chen@codeatlas.dev",
+        role: "Senior Security Engineer",
+      },
+      module: "agents",
+      action: "apply",
+      type: "agent_patch_applied",
+      target: { type: "agent", id: "run_agent_1", name: "Security Remediation Agent" },
       status: "success",
+      title: "Security Agent Applied Parameterized Query Patch",
+      shortDescription: "Automated agent generated and applied SQL injection fix in demo-auth-service.",
+      description: "AI Agent 'Security Vulnerability Remediation' detected unescaped sql query in src/services/auth.ts and replaced it with parameterized prepared statement.",
+      link: "/agents",
+      href: "/agents",
+      repositoryId: "sample-project",
+      details: {
+        diff: `--- a/src/services/auth.ts\n+++ b/src/services/auth.ts\n@@ -42,3 +42,3 @@\n-  const query = "SELECT * FROM users WHERE email = '" + email + "'";\n+  const query = "SELECT * FROM users WHERE email = $1";\n+  const result = await db.query(query, [email]);`,
+      },
+    },
+    {
+      id: "act_seed_3",
+      time: new Date(now - 1000 * 60 * 90).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 90).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "debugger",
+      action: "apply",
+      type: "debug_fix_applied",
+      target: { type: "investigation", id: "inv_1", name: "Token Verification Timing Attack" },
+      status: "success",
+      title: "Resolved Debug Investigation: Constant-Time Token Compare",
+      shortDescription: "Applied crypto.timingSafeEqual fix and opened PR #104.",
+      description: "Investigated timing leakage in signature check. Replaced string comparison with crypto.timingSafeEqual in src/services/auth.ts.",
+      link: "/debug?id=inv_1",
+      href: "/debug?id=inv_1",
+      repositoryId: "sample-project",
+      details: {
+        diff: `--- a/src/services/auth.ts\n+++ b/src/services/auth.ts\n@@ -88,3 +88,3 @@\n-  if (receivedToken === expectedToken) {\n+  if (crypto.timingSafeEqual(Buffer.from(receivedToken), Buffer.from(expectedToken))) {`,
+      },
+    },
+    {
+      id: "act_seed_4",
+      time: new Date(now - 1000 * 60 * 180).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 180).toISOString(),
+      actor: {
+        id: "usr_marcus",
+        name: "Marcus Chen",
+        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+        email: "marcus.chen@codeatlas.dev",
+        role: "DevOps Tech Lead",
+      },
+      module: "indexing",
+      action: "index",
+      type: "indexing_completed",
+      target: { type: "repository", id: "sample-project", name: "demo-auth-service" },
+      status: "success",
+      title: "Re-indexed repository demo-auth-service",
+      shortDescription: "Resolved 24 AST symbols and 15 cross-file relationships.",
+      description: "Deterministic AST parser scanned all 12 source files, extracting 24 functions/classes and verifying zero broken imports.",
+      link: "/repositories/sample-project",
       href: "/repositories/sample-project",
-      linkText: "Explore Symbols",
+      repositoryId: "sample-project",
+    },
+    {
+      id: "act_seed_5",
+      time: new Date(now - 1000 * 60 * 300).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 300).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "change-impact",
+      action: "analyze",
+      type: "impact_analysis_saved",
+      target: { type: "file", id: "src/services/auth.ts", name: "loginUser() in auth.ts" },
+      status: "warning",
+      title: "Evaluated Blast Radius for loginUser()",
+      shortDescription: "High Risk (68/100): 4 files, 5 symbols, and 1 public API endpoint affected.",
+      description: "Analyzed change impact graph for loginUser(). Identified direct call sites in LoginForm.tsx and session API route.",
+      link: "/change-impact?repo=sample-project&file=src/services/auth.ts&symbol=loginUser",
+      href: "/change-impact?repo=sample-project&file=src/services/auth.ts&symbol=loginUser",
+      repositoryId: "sample-project",
+    },
+    {
+      id: "act_seed_6",
+      time: new Date(now - 1000 * 60 * 60 * 24).toISOString(), // Yesterday
+      timestamp: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
+      actor: {
+        id: "usr_elena",
+        name: "Elena Rostova",
+        avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=100&h=100&fit=crop",
+        email: "elena.rostova@codeatlas.dev",
+        role: "Senior Security Architect",
+      },
+      module: "refactoring",
+      action: "apply",
+      type: "refactoring_proposal_applied",
+      target: { type: "proposal", id: "refact_prop_1", name: "Extract Shared WebAuthn Provider" },
+      status: "success",
+      title: "Applied Refactoring: Extract Shared WebAuthn Provider",
+      shortDescription: "Reduced technical debt score by 14 points across demo-auth-service.",
+      description: "Extracted duplicated challenge generation and verification logic into shared-core-lib WebAuthn adapter.",
+      link: "/refactoring",
+      href: "/refactoring",
+      repositoryId: "sample-project",
+      details: {
+        diff: `--- a/src/services/auth.ts\n+++ b/src/services/auth.ts\n@@ -12,8 +12,3 @@\n-import { generateRegistrationOptions } from "@simplewebauthn/server";\n-import { verifyRegistrationResponse } from "@simplewebauthn/server";\n+import { WebAuthnProvider } from "@codeatlas/shared-core";`,
+      },
+    },
+    {
+      id: "act_seed_7",
+      time: new Date(now - 1000 * 60 * 60 * 26).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 60 * 26).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "architecture",
+      action: "analyze",
+      type: "architecture_explored",
+      target: { type: "repository", id: "sample-project", name: "demo-auth-service" },
+      status: "info",
+      title: "Architecture Analysis: Resolved Circular Import Loop",
+      shortDescription: "Explored Modules layer and generated decoupling boundary rules.",
+      description: "Inspected dependency cycle between src/services/auth.ts and src/api/auth-routes.ts. Configured layer boundary constraints.",
+      link: "/architecture?repo=sample-project&level=modules",
+      href: "/architecture?repo=sample-project&level=modules",
+      repositoryId: "sample-project",
+    },
+    {
+      id: "act_seed_8",
+      time: new Date(now - 1000 * 60 * 60 * 30).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 60 * 30).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "workspaces",
+      action: "update",
+      type: "role_changed",
+      target: { type: "member", id: "usr_elena", name: "Elena Rostova" },
+      status: "success",
+      title: "Promoted Elena Rostova to Admin",
+      shortDescription: "Updated workspace membership permissions in Acme Engineering.",
+      description: "Elevated Elena Rostova role from member to admin with full repository indexing privileges.",
+      link: "/workspaces/ws_team_demo",
+      href: "/workspaces/ws_team_demo",
+      workspaceId: "ws_team_demo",
+      details: {
+        before: { role: "member" },
+        after: { role: "admin" },
+        changedFields: ["role"],
+      },
+    },
+    {
+      id: "act_seed_9",
+      time: new Date(now - 1000 * 60 * 60 * 34).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 60 * 34).toISOString(),
+      actor: {
+        id: "usr_alex",
+        name: "Alex Chen",
+        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop",
+        email: "alex.chen@codeatlas.dev",
+        role: "Senior Security Engineer",
+      },
+      module: "assistant",
+      action: "create",
+      type: "question_answered",
+      target: { type: "conversation", id: "conv_seed_1", name: "JWT Token Invalidation Best Practices" },
+      status: "info",
+      title: "Consulted AI Assistant on JWT Token Invalidation",
+      shortDescription: "Grounded answer with 3 AST code citations from auth.ts and validation.ts.",
+      description: "AI Assistant verified token revocation mechanisms against current repository implementation and cited src/services/auth.ts:18-42.",
+      link: "/assistant",
+      href: "/assistant",
+      repositoryId: "sample-project",
+    },
+    {
+      id: "act_seed_10",
+      time: new Date(now - 1000 * 60 * 60 * 36).toISOString(),
+      timestamp: new Date(now - 1000 * 60 * 60 * 36).toISOString(),
+      actor: {
+        id: "usr_marcus",
+        name: "Marcus Chen",
+        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+        email: "marcus.chen@codeatlas.dev",
+        role: "DevOps Tech Lead",
+      },
+      module: "multi-repo",
+      action: "analyze",
+      type: "multi_repo_analysis",
+      target: { type: "workspace", id: "ws_team_demo", name: "Acme Engineering" },
+      status: "warning",
+      title: "Executed Cross-Repository Dependency Scan",
+      shortDescription: "Detected 1 semantic version mismatch for @shared/core across 3 services.",
+      description: "Unified multi-repository intelligence scan across demo-auth-service, shared-core-lib, and api-gateway identified conflicting peer dependencies.",
+      link: "/multi-repo",
+      href: "/multi-repo",
+      workspaceId: "ws_team_demo",
+    },
+    {
+      id: "act_seed_11",
+      time: new Date(now - 1000 * 60 * 60 * 72).toISOString(), // 3 days ago
+      timestamp: new Date(now - 1000 * 60 * 60 * 72).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "explorer",
+      action: "scan",
+      type: "code_explained",
+      target: { type: "file", id: "src/utils/cart.ts", name: "calculateUserDiscounts()" },
+      status: "warning",
+      title: "Bug Audit: calculateUserDiscounts()",
+      shortDescription: "Identified 3 vulnerabilities: off-by-one boundary, unchecked null, negative balance.",
+      description: "Visual Code Explorer CodeLens inspection identified off-by-one boundary check (<= instead of <) in cart item loop.",
+      link: "/visual-explorer",
+      href: "/visual-explorer",
+      repositoryId: "sample-project",
+    },
+    {
+      id: "act_seed_12",
+      time: new Date(now - 1000 * 60 * 60 * 96).toISOString(), // 4 days ago
+      timestamp: new Date(now - 1000 * 60 * 60 * 96).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "settings",
+      action: "update",
+      type: "settings_updated",
+      target: { type: "settings", id: "user_settings", name: "User Preferences" },
+      status: "success",
+      title: "Updated AI Engine & Notification Preferences",
+      shortDescription: "Configured preferred model to gemini-1.5-pro with streaming enabled.",
+      description: "Updated workspace preferences: enabled real-time streaming, AST code citations, and line numbering.",
+      link: "/settings?tab=preferences",
+      href: "/settings?tab=preferences",
+      details: {
+        before: { preferredModel: "gemini-1.0-flash", useStreaming: false },
+        after: { preferredModel: "gemini-1.5-pro", useStreaming: true },
+        changedFields: ["preferredModel", "useStreaming"],
+      },
+    },
+    {
+      id: "act_seed_13",
+      time: new Date(now - 1000 * 60 * 60 * 120).toISOString(), // 5 days ago
+      timestamp: new Date(now - 1000 * 60 * 60 * 120).toISOString(),
+      actor: {
+        id: "usr_marcus",
+        name: "Marcus Chen",
+        avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
+        email: "marcus.chen@codeatlas.dev",
+        role: "DevOps Tech Lead",
+      },
+      module: "repositories",
+      action: "connect",
+      type: "repository_connected",
+      target: { type: "repository", id: "shared-core-lib", name: "shared-core-lib" },
+      status: "success",
+      title: "Connected Repository shared-core-lib",
+      shortDescription: "Linked shared core library to workspace Acme Engineering.",
+      description: "Repository added and scheduled for AST symbol indexing.",
+      link: "/repositories/shared-core-lib",
+      href: "/repositories/shared-core-lib",
+      repositoryId: "shared-core-lib",
+    },
+    {
+      id: "act_seed_14",
+      time: new Date(now - 1000 * 60 * 60 * 144).toISOString(), // 6 days ago
+      timestamp: new Date(now - 1000 * 60 * 60 * 144).toISOString(),
+      actor: {
+        id: "usr_demo",
+        name: "Demo User",
+        avatar: DEMO_USER.avatar,
+        email: "demo@codeatlas.dev",
+        role: "Lead Systems Architect",
+      },
+      module: "auth",
+      action: "login",
+      type: "auth_sign_in",
+      target: { type: "session", id: "sess_init", name: "Active Session" },
+      status: "success",
+      title: "User Signed In via GitHub OAuth",
+      shortDescription: "Authenticated demo-developer session from Chrome / macOS.",
+      description: "Single Sign-On authentication completed successfully with scopes [read:user, repo].",
+      link: "/settings?tab=account",
+      href: "/settings?tab=account",
+      details: {
+        metadata: { browser: "Chrome 128", os: "macOS Sonoma", ip: "192.168.1.1" },
+      },
     },
   ];
 
@@ -2098,29 +2459,343 @@ export function emitChange(): void {
 // Typed Mutation Helpers (Auto-log activities & emit reactive changes)
 // ---------------------------------------------------------------------------
 
-export function logActivity(activity: {
+export interface LogActivityInput {
   type: string;
   title: string;
-  description: string;
-  status?: "success" | "warning" | "error" | "info";
+  description?: string;
+  shortDescription?: string;
+  status?: "success" | "warning" | "error" | "failed" | "info";
   href?: string;
+  link?: string;
   linkText?: string;
   userId?: string;
-}) {
-  const store = getStore();
-  const newActivity = {
-    id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    userId: activity.userId || "usr_demo",
-    type: activity.type,
-    title: activity.title,
-    description: activity.description,
-    timestamp: new Date().toISOString(),
-    status: activity.status || "success",
-    href: activity.href,
-    linkText: activity.linkText,
+  userName?: string;
+  module?: ActivityModule;
+  action?: ActivityAction | string;
+  target?: ActivityTarget | string;
+  actor?: ActivityActor;
+  workspaceId?: string;
+  repositoryId?: string;
+  details?: {
+    before?: any;
+    after?: any;
+    diff?: string;
+    changedFields?: string[];
+    metadata?: Record<string, any>;
   };
+}
+
+export function logActivity(activity: LogActivityInput): ActivityEvent {
+  const store = getStore();
+  const time = new Date().toISOString();
+  const rawStatus = (activity.status || "success").toLowerCase();
+  const status: ActivityStatus =
+    rawStatus === "error" || rawStatus === "failed"
+      ? "failed"
+      : rawStatus === "warning"
+      ? "warning"
+      : rawStatus === "info"
+      ? "info"
+      : "success";
+
+  const actor: ActivityActor = activity.actor || (activity.userId && activity.userName ? {
+    id: activity.userId,
+    name: activity.userName,
+    avatar: DEMO_USER.avatar,
+  } : getActiveUser());
+
+  const link = activity.link || activity.href || "#";
+
+  // Infer module if not supplied
+  let module: ActivityModule = activity.module || "repositories";
+  if (!activity.module) {
+    const t = (activity.type || "").toLowerCase();
+    const h = (link || "").toLowerCase();
+    if (h.includes("/workspace") || t.startsWith("workspace") || t.startsWith("member_") || t.startsWith("role_")) {
+      module = "workspaces";
+    } else if (h.includes("/code-review") || t.startsWith("pr_") || t.startsWith("review_")) {
+      module = "code-review";
+    } else if (h.includes("/agents") || t.startsWith("agent")) {
+      module = "agents";
+    } else if (h.includes("/debug") || t.startsWith("debug") || t.includes("investigation")) {
+      module = "debugger";
+    } else if (h.includes("/refactoring") || t.startsWith("refactor") || t.includes("debt")) {
+      module = "refactoring";
+    } else if (h.includes("/architecture") || t.startsWith("arch")) {
+      module = "architecture";
+    } else if (h.includes("/change-impact") || t.startsWith("impact")) {
+      module = "change-impact";
+    } else if (h.includes("/multi-repo") || t.startsWith("multi_repo")) {
+      module = "multi-repo";
+    } else if (h.includes("/assistant") || t.startsWith("assistant") || t.includes("question")) {
+      module = "assistant";
+    } else if (h.includes("/visual-explorer") || t.startsWith("explorer") || t.includes("code_explained")) {
+      module = "explorer";
+    } else if (h.includes("/settings") || t.startsWith("settings")) {
+      module = "settings";
+    } else if (t.startsWith("auth_") || t.includes("login") || t.includes("logout") || t.includes("signed_")) {
+      module = "auth";
+    } else if (t.includes("index") || t.includes("indexing")) {
+      module = "indexing";
+    } else {
+      module = "repositories";
+    }
+  }
+
+  // Infer action if not supplied
+  let action: ActivityAction | string = activity.action || "create";
+  if (!activity.action) {
+    const t = (activity.type || "").toLowerCase();
+    const title = (activity.title || "").toLowerCase();
+    if (t.includes("created") || t.includes("opened") || title.includes("create") || title.includes("opened")) {
+      action = "create";
+    } else if (t.includes("updated") || t.includes("changed") || title.includes("update") || title.includes("change")) {
+      action = "update";
+    } else if (t.includes("deleted") || t.includes("removed") || title.includes("delete") || title.includes("remove")) {
+      action = "delete";
+    } else if (t.includes("merged") || title.includes("merge")) {
+      action = "merge";
+    } else if (t.includes("approved") || title.includes("approve")) {
+      action = "approve";
+    } else if (t.includes("applied") || title.includes("appl")) {
+      action = "apply";
+    } else if (t.includes("indexed") || t.includes("indexing") || title.includes("index")) {
+      action = "index";
+    } else if (t.includes("analyzed") || t.includes("analysis") || title.includes("analyz") || title.includes("blast")) {
+      action = "analyze";
+    } else if (t.includes("login") || t.includes("sign_in") || title.includes("sign in") || title.includes("logged in")) {
+      action = "login";
+    } else if (t.includes("logout") || t.includes("sign_out") || title.includes("sign out")) {
+      action = "logout";
+    } else if (t.includes("comment") || title.includes("comment")) {
+      action = "comment";
+    } else if (t.includes("scan") || title.includes("scan") || title.includes("audit")) {
+      action = "scan";
+    } else if (t.includes("connected") || title.includes("connect")) {
+      action = "connect";
+    } else if (t.includes("disconnected") || title.includes("disconnect")) {
+      action = "disconnect";
+    } else {
+      action = "run";
+    }
+  }
+
+  // Infer target if not supplied
+  let target: ActivityTarget = { type: module, id: "target", name: activity.title };
+  if (activity.target) {
+    if (typeof activity.target === "string") {
+      target = { type: module, id: activity.target, name: activity.target };
+    } else {
+      target = activity.target;
+    }
+  } else {
+    if (activity.repositoryId) {
+      target = { type: "repository", id: activity.repositoryId, name: activity.repositoryId };
+    } else if (activity.workspaceId) {
+      target = { type: "workspace", id: activity.workspaceId, name: activity.workspaceId };
+    }
+  }
+
+  const shortDescription =
+    activity.shortDescription ||
+    (activity.description && activity.description.length > 140
+      ? activity.description.slice(0, 137) + "..."
+      : activity.description) ||
+    activity.title;
+
+  const description = activity.description || shortDescription;
+
+  const newActivity: ActivityEvent = {
+    id: `act_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    time,
+    timestamp: time,
+    actor,
+    userId: actor.id,
+    type: activity.type,
+    module,
+    action,
+    target,
+    status,
+    title: activity.title,
+    shortDescription,
+    description,
+    link,
+    href: link,
+    linkText: activity.linkText,
+    workspaceId: activity.workspaceId,
+    repositoryId: activity.repositoryId,
+    details: activity.details,
+  };
+
   store.activities = [newActivity, ...(store.activities || [])];
   saveStore(store);
+  return newActivity;
+}
+
+export function getAuditTrail(filters?: Partial<ActivityFilterState>): ActivityEvent[] {
+  const store = getStore();
+  let list = (store.activities || []).map((raw: any) => {
+    const time = raw.time || raw.timestamp || new Date().toISOString();
+    const actor: ActivityActor = raw.actor || {
+      id: raw.userId || "usr_demo",
+      name: raw.userName || "Demo User",
+      avatar: DEMO_USER.avatar,
+      email: "demo@codeatlas.dev",
+      role: "Lead Systems Architect",
+    };
+    let target: ActivityTarget = { type: raw.module || "resource", id: "item", name: raw.title || "Item" };
+    if (raw.target) {
+      target = typeof raw.target === "string" ? { type: raw.module || "item", id: raw.target, name: raw.target } : raw.target;
+    } else if (raw.repositoryName || raw.repositoryId) {
+      target = { type: "repository", id: raw.repositoryId || "sample-project", name: raw.repositoryName || raw.repositoryId || "sample-project" };
+    }
+    return {
+      id: raw.id || `act_${Date.now()}`,
+      time,
+      timestamp: time,
+      actor,
+      userId: raw.userId || actor.id,
+      type: raw.type || "system_activity",
+      module: (raw.module || "repositories") as ActivityModule,
+      action: raw.action || "create",
+      target,
+      status: (raw.status === "error" ? "failed" : raw.status || "success") as ActivityStatus,
+      title: raw.title || "Audit Activity",
+      shortDescription: raw.shortDescription || raw.description?.slice(0, 140) || raw.title,
+      description: raw.description || raw.shortDescription || raw.title,
+      link: raw.link || raw.href || "#",
+      href: raw.link || raw.href || "#",
+      linkText: raw.linkText,
+      workspaceId: raw.workspaceId,
+      repositoryId: raw.repositoryId,
+      details: raw.details,
+    } as ActivityEvent;
+  });
+
+  if (!filters) return list;
+
+  if (filters.search && filters.search.trim()) {
+    const q = filters.search.toLowerCase().trim();
+    list = list.filter(
+      (e) =>
+        e.title.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.shortDescription.toLowerCase().includes(q) ||
+        e.actor.name.toLowerCase().includes(q) ||
+        (typeof e.target === "object" ? e.target.name.toLowerCase().includes(q) : String(e.target).toLowerCase().includes(q)) ||
+        e.module.toLowerCase().includes(q) ||
+        String(e.action).toLowerCase().includes(q)
+    );
+  }
+
+  if (filters.modules && filters.modules.length > 0) {
+    list = list.filter((e) => filters.modules!.includes(e.module));
+  }
+
+  if (filters.action && filters.action !== "all") {
+    list = list.filter((e) => String(e.action).toLowerCase() === filters.action!.toLowerCase());
+  }
+
+  if (filters.status && filters.status !== "all") {
+    list = list.filter((e) => e.status.toLowerCase() === filters.status!.toLowerCase());
+  }
+
+  if (filters.actor && filters.actor !== "all") {
+    list = list.filter(
+      (e) =>
+        e.actor.id === filters.actor ||
+        e.actor.name.toLowerCase() === filters.actor!.toLowerCase()
+    );
+  }
+
+  if (filters.workspace && filters.workspace !== "all") {
+    list = list.filter((e) => e.workspaceId === filters.workspace);
+  }
+
+  if (filters.repository && filters.repository !== "all") {
+    list = list.filter((e) => e.repositoryId === filters.repository);
+  }
+
+  if (filters.dateRange && filters.dateRange !== "all") {
+    const now = Date.now();
+    if (filters.dateRange === "today") {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      list = list.filter((e) => new Date(e.time).getTime() >= todayStart.getTime());
+    } else if (filters.dateRange === "7d") {
+      const cutoff = now - 7 * 24 * 60 * 60 * 1000;
+      list = list.filter((e) => new Date(e.time).getTime() >= cutoff);
+    } else if (filters.dateRange === "30d") {
+      const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+      list = list.filter((e) => new Date(e.time).getTime() >= cutoff);
+    } else if (filters.dateRange === "custom" && filters.customDate) {
+      list = list.filter((e) => e.time.startsWith(filters.customDate!));
+    }
+  }
+
+  return list;
+}
+
+export function updateUserSettings(settings: Partial<any>): any {
+  const store = getStore();
+  const oldSettings = { ...(store.userSettings || {}) };
+  store.userSettings = {
+    ...store.userSettings,
+    ...settings,
+    updatedAt: new Date().toISOString(),
+  };
+
+  logActivity({
+    module: "settings",
+    action: "update",
+    type: "settings_updated",
+    title: "Updated User Preferences",
+    description: `Updated configuration settings (${Object.keys(settings).join(", ")}).`,
+    target: { type: "settings", id: "user_settings", name: "User Preferences" },
+    href: "/settings",
+    status: "success",
+    details: {
+      before: oldSettings,
+      after: store.userSettings,
+      changedFields: Object.keys(settings),
+    },
+  });
+
+  saveStore(store);
+  return store.userSettings;
+}
+
+export function logAuthSignIn(user: any, provider?: string): ActivityEvent {
+  return logActivity({
+    module: "auth",
+    action: "login",
+    type: "auth_sign_in",
+    title: `User Signed In (${provider || "session"})`,
+    description: `Authenticated session for ${user?.name || user?.email || "User"}.`,
+    target: { type: "session", id: user?.id || "session", name: user?.name || "Active Session" },
+    status: "success",
+    actor: {
+      id: user?.id || "usr_demo",
+      name: user?.name || "Demo User",
+      avatar: user?.avatar || DEMO_USER.avatar,
+      email: user?.email,
+      role: user?.role,
+    },
+    href: "/settings?tab=account",
+  });
+}
+
+export function logAuthSignOut(user?: any): ActivityEvent {
+  return logActivity({
+    module: "auth",
+    action: "logout",
+    type: "auth_sign_out",
+    title: "User Signed Out",
+    description: "Terminated active authentication session.",
+    target: { type: "session", id: "session", name: "Active Session" },
+    status: "info",
+    href: "/settings?tab=account",
+  });
 }
 
 export function addNotification(notif: {
@@ -2385,6 +3060,8 @@ export function updateWorkspaceMemberRole(workspaceId: string, userId: string, n
   return true;
 }
 
+
+
 export function removeWorkspaceMember(workspaceId: string, userId: string): boolean {
   const store = getStore();
   const list = store.workspaceMembers[workspaceId] || [];
@@ -2406,6 +3083,8 @@ export function removeWorkspaceMember(workspaceId: string, userId: string): bool
   saveStore(store);
   return true;
 }
+
+
 
 export function addWorkspaceRepository(workspaceId: string, repositoryId: string): any {
   const store = getStore();
@@ -2476,10 +3155,15 @@ export function reindexWorkspaceRepository(workspaceId: string, repositoryId: st
   }
 
   logActivity({
+    module: "indexing",
+    action: "index",
     type: "indexing_completed",
     title: `Re-indexed ${repo?.name || repositoryId}`,
     description: "Full AST deterministic symbol graph refreshed.",
     href: `/repositories/${repositoryId}`,
+    target: { type: "repository", id: repositoryId, name: repo?.name || repositoryId },
+    repositoryId,
+    workspaceId,
   });
 
   saveStore(store);
@@ -2487,6 +3171,10 @@ export function reindexWorkspaceRepository(workspaceId: string, repositoryId: st
     window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
   }
   return repo;
+}
+
+export function reindexRepository(repositoryId: string): any {
+  return reindexWorkspaceRepository("ws_team_demo", repositoryId);
 }
 
 export function createWorkspaceInvitation(workspaceId: string, email: string, role: string): any {
@@ -2533,6 +3221,8 @@ export function revokeWorkspaceInvitation(invitationId: string): boolean {
   saveStore(store);
   return true;
 }
+
+
 
 export function acceptWorkspaceInvitation(token: string, user?: any): any {
   const store = getStore();
@@ -2741,6 +3431,8 @@ export function deleteAnnotation(workspaceId: string, id: string): boolean {
   saveStore(store);
   return true;
 }
+
+
 
 // ---------------------------------------------------------------------------
 // Multi-Repo & Refactoring Mutation Helpers
@@ -3038,13 +3730,26 @@ export function applyAgentDiffToStore(run: AgentRun): void {
   }
 
   // 4. Activity & Notification
+  const agentDiffString =
+    run.diff?.patch ||
+    (run.diff?.newContent
+      ? `--- a/${filePath}\n+++ b/${filePath}\n@@ -1,5 +1,6 @@\n+${run.diff.newContent.slice(0, 500)}`
+      : undefined);
+
   logActivity({
-    type: "pr_created",
-    title: `Pull Request #${prNumber} opened from Agent: ${run.title || run.taskPrompt}`,
-    description: `Applied approved patch to ${filePath} in ${repoId}.`,
+    module: "agents",
+    action: "apply",
+    type: "agent_patch_applied",
+    title: `Agent Applied Patch: ${run.title || run.taskPrompt}`,
+    description: `Applied approved changes to ${filePath} and opened PR #${prNumber}.`,
     status: "success",
-    href: "/code-review",
+    href: `/code-review?pr=${prId}`,
     linkText: "View Pull Request",
+    target: { type: "agent", id: run.id, name: run.title || run.templateName || "Engineering Agent", path: filePath },
+    repositoryId: repoId,
+    details: {
+      diff: agentDiffString,
+    },
   });
 
   if (!store.notifications) store.notifications = [];
@@ -3831,11 +4536,18 @@ export function mergePullRequest(prId: string): { success: boolean; message: str
   });
 
   logActivity({
+    module: "code-review",
+    action: "merge",
     type: "pr_merged",
     title: `Merged PR #${pr.number}: ${pr.title}`,
     description: `Successfully applied changes to ${pr.repositoryId} on branch ${pr.baseBranch || "main"}.`,
     href: `/code-review?pr=${pr.id}`,
+    target: { type: "pr", id: pr.id, name: `PR #${pr.number}` },
+    repositoryId: pr.repositoryId,
     status: "success",
+    details: {
+      diff: pr.diff || pr.files?.[0]?.patch || undefined,
+    },
   });
 
   if (!store.notifications) store.notifications = [];
@@ -3884,6 +4596,8 @@ export function closePullRequest(prId: string): boolean {
   return true;
 }
 
+
+
 export function reopenPullRequest(prId: string): boolean {
   const store = getStore();
   if (!store.pullRequests) return false;
@@ -3915,6 +4629,8 @@ export function reopenPullRequest(prId: string): boolean {
   saveStore(store);
   return true;
 }
+
+
 
 export function addInlineComment(
   prId: string,
@@ -4049,6 +4765,8 @@ export function resolveDiscussion(prId: string, findingId: string, resolved = tr
   return true;
 }
 
+
+
 export function toggleChecklistItem(prId: string, checklistId: string): boolean {
   const store = getStore();
   if (!store.pullRequests) return false;
@@ -4072,6 +4790,8 @@ export function toggleChecklistItem(prId: string, checklistId: string): boolean 
   return true;
 }
 
+
+
 export function toggleViewedFile(prId: string, filename: string): boolean {
   const store = getStore();
   if (!store.pullRequests) return false;
@@ -4083,6 +4803,8 @@ export function toggleViewedFile(prId: string, filename: string): boolean {
   saveStore(store);
   return true;
 }
+
+
 
 export function applyFindingSuggestion(
   prId: string,
@@ -4124,11 +4846,18 @@ export function applyFindingSuggestion(
   });
 
   logActivity({
+    module: "code-review",
+    action: "apply",
     type: "review_suggestion_applied",
     title: `Applied Suggestion on PR #${pr.number}`,
     description: `Remediation patch applied for finding ${findingId}.`,
     href: `/code-review?pr=${pr.id}`,
+    target: { type: "pr", id: pr.id, name: `PR #${pr.number}` },
+    repositoryId: pr.repositoryId,
     status: "success",
+    details: {
+      diff: suggestionDiff || undefined,
+    },
   });
 
   saveStore(store);
@@ -4168,4 +4897,18 @@ export function updateFindingDecision(
   return true;
 }
 
-
+if (typeof window !== "undefined") {
+  (window as any).__CODEATLAS_STORE__ = {
+    getStore,
+    saveStore,
+    resetStore,
+    logActivity,
+    getAuditTrail,
+    subscribe,
+    emitChange,
+    createWorkspace,
+    reindexRepository,
+    applyAgentDiffToStore,
+    mergePullRequest,
+  };
+}

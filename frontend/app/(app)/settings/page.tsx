@@ -7,7 +7,8 @@ import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { ConnectedAccounts } from "@/components/settings/ConnectedAccounts";
 import { AIPreferencesSettings } from "@/components/settings/AIPreferencesSettings";
 import { workspaceService } from "@/services/workspace-service";
-import { useAuth } from "@/hooks/useAuth";
+import { useAuth } from "@/hooks/useAuth";
+import { logActivity } from "@/lib/demo/store";
 import { User, Shield, Sliders, CheckCircle2 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -46,7 +47,18 @@ export default function SettingsPage() {
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await workspaceService.updateSettings(undefined, { name, email, role });
+      await workspaceService.updateSettings(undefined, { name, email, role });
+      logActivity({
+        module: "settings",
+        action: "update",
+        type: "profile_updated",
+        title: "Updated Developer Profile",
+        description: `Profile saved: ${name} (${role}).`,
+        target: { type: "profile", id: "user_profile", name },
+        href: "/settings",
+        status: "success",
+        details: { after: { name, email, role } },
+      });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
     } catch (e) {

@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { Github } from "@/components/Icons";
 import { useRepositories } from "@/hooks/useRepositories";
+import { logActivity } from "@/lib/demo/store";
 
 const DEFAULT_SUGGESTED_QUESTIONS = [
   "How does authentication work in this codebase?",
@@ -224,6 +225,16 @@ export function AssistantWorkspace() {
     if (!q || isLoading) return;
 
     setLastFailedQuery(null);
+    logActivity({
+      module: "assistant",
+      action: "create",
+      type: "question_answered",
+      title: `Asked AI Assistant: "${q.slice(0, 45)}${q.length > 45 ? "..." : ""}"`,
+      description: `Consulted CodeAtlas Assistant${selectedRepo && selectedRepo !== "none" ? ` on ${selectedRepo}` : ""}.`,
+      target: { type: "conversation", id: activeConversationId, name: currentConversation.title || "Assistant Chat" },
+      href: "/assistant",
+      status: "info",
+    });
 
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
