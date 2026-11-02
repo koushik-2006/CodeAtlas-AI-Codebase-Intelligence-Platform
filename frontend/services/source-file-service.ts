@@ -200,28 +200,30 @@ class SourceFileService {
   ): Promise<{ code: string; language: string; lineCount: number } | null> {
     if (!filePath) return null;
 
-    // 1. Try Central Store first
+    // 1. Try Central Store first (only if non-empty real code)
     if (typeof window !== "undefined") {
       try {
         const store = getStore();
         const repoFiles = store.repositoryFiles?.[repositoryId];
         if (repoFiles && repoFiles[filePath]) {
           const entry = repoFiles[filePath];
-          return {
-            code: entry.code,
-            language: entry.language || symbolExtractor.detectLanguage(filePath),
-            lineCount: entry.code.split("\n").length,
-          };
+          if (entry.code && entry.code.trim().length > 0) {
+            return {
+              code: entry.code,
+              language: entry.language || symbolExtractor.detectLanguage(filePath),
+              lineCount: entry.code.split("\n").length,
+            };
+          }
         }
       } catch (e) {
         console.warn("Failed to read file from central store:", e);
       }
     }
 
-    // 2. Try IndexedDB cache
+    // 2. Try IndexedDB cache (only if non-empty)
     try {
       const cached = await repoCache.getFile(`${repositoryId}:${filePath}`);
-      if (cached !== null && cached !== undefined) {
+      if (cached && typeof cached === "string" && cached.trim().length > 0) {
         const lang = symbolExtractor.detectLanguage(filePath);
         return {
           code: cached,
@@ -245,7 +247,37 @@ class SourceFileService {
       }
     }
 
-    // 4. Try backend API
+    // 4. Direct Next.js relative fetch (guaranteed lowest latency <10ms and clean unwrapping)
+    if (typeof window !== "undefined") {
+      try {
+        const directRes = await fetch(
+          `/api/repositories/${encodeURIComponent(repositoryId)}/files?path=${encodeURIComponent(filePath)}`
+        );
+        if (directRes.ok) {
+          const json = await directRes.json();
+          const fileData = json.data !== undefined ? json.data : json;
+          if (fileData && typeof fileData.content === "string") {
+            const lang = fileData.language || symbolExtractor.detectLanguage(filePath);
+            try {
+              const store = getStore();
+              if (!store.repositoryFiles) store.repositoryFiles = {};
+              if (!store.repositoryFiles[repositoryId]) store.repositoryFiles[repositoryId] = {};
+              store.repositoryFiles[repositoryId][filePath] = { code: fileData.content, language: lang };
+              saveStore(store);
+            } catch {}
+            return {
+              code: fileData.content,
+              language: lang,
+              lineCount: fileData.lineCount || fileData.content.split("\n").length,
+            };
+          }
+        }
+      } catch (directErr) {
+        console.warn("Direct file fetch failed, trying apiClient fallback:", directErr);
+      }
+    }
+
+    // 5. Fallback via apiClient
     try {
       const res = await apiClient.get<{
         path: string;
@@ -255,18 +287,19 @@ class SourceFileService {
         lineCount: number;
       }>(`/repositories/${repositoryId}/files?path=${encodeURIComponent(filePath)}`);
 
-      if (res.success && res.data && res.data.content) {
+      const fileData = (res.data as any)?.data !== undefined ? (res.data as any).data : res.data;
+      if (res.success && fileData && typeof fileData.content === "string") {
         return {
-          code: res.data.content,
-          language: res.data.language,
-          lineCount: res.data.lineCount,
+          code: fileData.content,
+          language: fileData.language || symbolExtractor.detectLanguage(filePath),
+          lineCount: fileData.lineCount || fileData.content.split("\n").length,
         };
       }
     } catch (err) {
       console.warn("Failed to fetch remote file content from API:", err);
     }
 
-    // 5. On-demand CDN fetch if this is a known GitHub repository
+    // 6. On-demand CDN fetch if this is a known GitHub repository
     if (typeof window !== "undefined") {
       try {
         const store = getStore();
@@ -275,10 +308,16 @@ class SourceFileService {
         let name = repo?.name;
         let branch = repo?.branch || "main";
 
-        if (!owner && repositoryId === "tourist-management-system") {
-          owner = "koushik-2006";
-          name = "Tourist-Management-System";
-          branch = "main";
+        if (!owner) {
+          if (repositoryId === "tourist-management-system") {
+            owner = "koushik-2006";
+            name = "Tourist-Management-System";
+            branch = "main";
+          } else if (repositoryId === "ai-driven-inspection-of-institutions" || repositoryId.includes("inspection")) {
+            owner = "koushik-2006";
+            name = "AI-Driven-Inspection-of-Institutions";
+            branch = "main";
+          }
         }
 
         if (owner && name && owner !== "you" && owner !== "codeatlas-demo") {

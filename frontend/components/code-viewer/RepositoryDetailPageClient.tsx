@@ -73,6 +73,7 @@ function findPreferredFile(items: FileItem[]): string | null {
 
   // 2. Check for canonical entry point files
   const entryPointNames = [
+    "index.html",
     "app.py",
     "main.py",
     "server.py",
@@ -86,6 +87,7 @@ function findPreferredFile(items: FileItem[]): string | null {
     "main.js",
     "server.ts",
     "server.js",
+    "InspectAiApplication.java",
     "main.go",
     "main.rs",
     "application.java",

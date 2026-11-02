@@ -195,15 +195,44 @@ export function SourceCodeViewer({
 
       {/* Code Display Area */}
       <div className="flex-1 flex overflow-auto font-mono text-xs leading-6 select-text">
-        {lines.length === 0 || (lines.length === 1 && !lines[0].trim()) ? (
+        {lines.length === 0 || (lines.length === 1 && !lines[0].trim()) || filePath.endsWith(".gitkeep") ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)]">
             <FileText className="w-8 h-8 opacity-40 mb-2" />
             <p className="text-xs font-mono font-semibold text-[var(--text-primary)]">
-              This file is empty (0 bytes).
+              {filePath.endsWith(".gitkeep")
+                ? "Git Directory Placeholder (.gitkeep)"
+                : "This file is empty (0 bytes)."}
             </p>
-            <p className="text-[11px] opacity-75 mt-1">
-              Select a source file (such as <span className="font-bold text-[var(--primary)] font-mono">app.py</span>) from the explorer tree on the left.
+            <p className="text-[11px] opacity-75 mt-1 max-w-sm">
+              {filePath.endsWith(".gitkeep")
+                ? "This placeholder keeps the directory structure tracked in version control. Choose a primary source file below to view code:"
+                : "Select a source file (such as app.py or index.html) from the explorer tree on the left."}
             </p>
+            {onNavigateTarget && (
+              <div className="mt-4 flex flex-wrap gap-2 justify-center">
+                <button
+                  type="button"
+                  onClick={() => onNavigateTarget("index.html", 1)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl bg-[var(--primary)] text-white hover:opacity-90 shadow-sm transition-all"
+                >
+                  Open index.html
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTarget("ai-engine/app.py", 1)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)]/25 text-[var(--text-primary)] transition-all"
+                >
+                  Open app.py
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigateTarget("README.md", 1)}
+                  className="px-3 py-1.5 text-xs font-bold rounded-xl border border-[var(--border-color)] hover:bg-[var(--border-color)]/25 text-[var(--text-primary)] transition-all"
+                >
+                  Open README.md
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <>
