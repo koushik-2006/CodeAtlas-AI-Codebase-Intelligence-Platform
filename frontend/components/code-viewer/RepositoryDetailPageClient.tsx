@@ -168,32 +168,54 @@ function RepositoryExplorerContent() {
 
   // Load tree files
   useEffect(() => {
-    sourceFileService.getRepositoryFileTree(repoId).then((files) => {
-      if (files && files.length > 0) {
-        setTreeFiles(files);
+    let isCancelled = false;
 
-        // Check if current selectedFilePath exists in tree
-        const flatPaths = new Set<string>();
-        function gatherPaths(list: FileItem[]) {
-          for (const item of list) {
-            if (item.type === "file") flatPaths.add(item.path);
-            if (item.children) gatherPaths(item.children);
-          }
-        }
-        gatherPaths(files);
+    const loadTree = async () => {
+      let files = await sourceFileService.getRepositoryFileTree(repoId);
+      if (isCancelled) return;
 
-        if (
-          !selectedFilePath ||
-          !flatPaths.has(selectedFilePath) ||
-          (repoId !== "sample-project" && selectedFilePath === "src/components/LoginForm.tsx")
-        ) {
-          const pref = findPreferredFile(files);
-          if (pref) {
-            setSelectedFilePath(pref);
+      if (!files || files.length === 0) {
+        try {
+          const res = await apiClient.get<any>(`/repositories/${repoId}/files`);
+          if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+            files = await sourceFileService.getRepositoryFileTree(repoId);
           }
+        } catch (e) {
+          console.warn("Failed tree recovery attempt:", e);
         }
       }
-    });
+
+      if (isCancelled || !files || files.length === 0) return;
+
+      setTreeFiles(files);
+
+      // Check if current selectedFilePath exists in tree
+      const flatPaths = new Set<string>();
+      function gatherPaths(list: FileItem[]) {
+        for (const item of list) {
+          if (item.type === "file") flatPaths.add(item.path);
+          if (item.children) gatherPaths(item.children);
+        }
+      }
+      gatherPaths(files);
+
+      if (
+        !selectedFilePath ||
+        !flatPaths.has(selectedFilePath) ||
+        (repoId !== "sample-project" && selectedFilePath === "src/components/LoginForm.tsx")
+      ) {
+        const pref = findPreferredFile(files);
+        if (pref) {
+          setSelectedFilePath(pref);
+        }
+      }
+    };
+
+    loadTree();
+
+    return () => {
+      isCancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repoId]);
 

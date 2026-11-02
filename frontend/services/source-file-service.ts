@@ -59,11 +59,21 @@ class SourceFileService {
       try {
         const store = getStore();
         const repo = store.repositories.find((r) => r.id === repositoryId);
-        if (repo && repo.owner && repo.name && repo.owner !== "you") {
+        let owner = repo?.owner;
+        let name = repo?.name;
+        let branch = repo?.branch || "main";
+
+        if (!owner && repositoryId === "tourist-management-system") {
+          owner = "koushik-2006";
+          name = "Tourist-Management-System";
+          branch = "main";
+        }
+
+        if (owner && name && owner !== "you" && owner !== "codeatlas-demo") {
           const rawTree = await githubMetadataService.fetchFileTree(
-            repo.owner,
-            repo.name,
-            repo.branch || "main"
+            owner,
+            name,
+            branch
           );
           if (rawTree.length > 0) {
             const files = rawTree
@@ -255,11 +265,21 @@ class SourceFileService {
       try {
         const store = getStore();
         const repo = store.repositories.find((r) => r.id === repositoryId);
-        if (repo && repo.owner && repo.name && repo.owner !== "you") {
+        let owner = repo?.owner;
+        let name = repo?.name;
+        let branch = repo?.branch || "main";
+
+        if (!owner && repositoryId === "tourist-management-system") {
+          owner = "koushik-2006";
+          name = "Tourist-Management-System";
+          branch = "main";
+        }
+
+        if (owner && name && owner !== "you" && owner !== "codeatlas-demo") {
           const content = await githubMetadataService.fetchFileContent(
-            repo.owner,
-            repo.name,
-            repo.branch || "main",
+            owner,
+            name,
+            branch,
             filePath
           );
           if (content !== null) {

@@ -65,13 +65,13 @@ export async function GET(
 
     // Live on-demand fetch from GitHub if content is missing or file not in DB
     if (
-      repo.connectionType === "github" &&
-      account?.accessToken &&
-      account.accessToken !== "sandbox_demo_token_codeatlas"
+      repo.connectionType === "github" ||
+      (repo.owner && repo.name && repo.owner !== "codeatlas-demo")
     ) {
       try {
+        const token = account?.accessToken || "";
         const rawContent = await github.fetchFileContent(
-          account.accessToken,
+          token,
           repo.owner,
           repo.name,
           filePath,
@@ -145,16 +145,15 @@ export async function GET(
   // ---------------------------------------------------------------------------
   let files = db.getRepositoryFiles(params.id);
 
-  // If no files in DB yet and GitHub connection is live, discover the tree on-the-fly!
+  // If no files in DB yet, discover the tree on-the-fly!
   if (
     files.length === 0 &&
-    repo.connectionType === "github" &&
-    account?.accessToken &&
-    account.accessToken !== "sandbox_demo_token_codeatlas"
+    (repo.connectionType === "github" || (repo.owner && repo.name && repo.owner !== "codeatlas-demo"))
   ) {
     try {
+      const token = account?.accessToken || "";
       const tree = await github.getRepositoryTree(
-        account.accessToken,
+        token,
         repo.owner,
         repo.name,
         repo.defaultBranch || "main"
@@ -178,6 +177,11 @@ export async function GET(
 
       if (treeFiles.length > 0) {
         db.saveRepositoryFiles(params.id, treeFiles);
+        db.updateRepository(params.id, {
+          fileCount: treeFiles.length,
+          status: "ready",
+          progress: 100,
+        });
         files = treeFiles;
       }
     } catch (err: any) {

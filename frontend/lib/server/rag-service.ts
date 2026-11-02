@@ -122,9 +122,9 @@ class GroundedRAGService {
     // Architectural Intent Recognition
     const isAuthQuery = /auth|login|credential|password|token|session/i.test(qLower);
     const isStartOrEntryQuery = /where.*(?:start|begin)|entry\s*point|how.*(?:start|run)|onboard/i.test(qLower);
-    const isDbQuery = /database|table|sql|store|persist|data\s*access/i.test(qLower);
+    const isDbQuery = /database|table|sql|store|persist|data\s*access|schema|model|query|mysql|postgres|sqlite|mongodb|entity|column/i.test(qLower);
     const isTestQuery = /test|spec|verify|assert|coverage/i.test(qLower);
-    const isApiQuery = /api|endpoint|route|handler|request/i.test(qLower);
+    const isApiQuery = /api|endpoint|route|handler|request|controller/i.test(qLower);
 
     for (const sym of allSymbols) {
       const symNameLower = sym.name.toLowerCase();
@@ -144,7 +144,14 @@ class GroundedRAGService {
       if (isStartOrEntryQuery && (sym.name.includes("handleSubmit") || sym.name.includes("loginUser") || sym.filePath.includes("LoginForm"))) {
         matched = true;
       }
-      if (isDbQuery && (sym.type === "table" || sym.type === "service" || sym.name.includes("Session") || sym.name.includes("Store") || sym.name.includes("User"))) {
+      if (
+        isDbQuery &&
+        (sym.type === "table" ||
+          sym.filePath.endsWith(".sql") ||
+          sym.filePath.includes("models") ||
+          sym.name.startsWith("Table:") ||
+          (sym.type === "service" && (sym.name.includes("Session") || sym.name.includes("Store") || sym.name.includes("User"))))
+      ) {
         matched = true;
       }
       if (isTestQuery && (sym.type === "test" || sym.filePath.includes("test"))) {
@@ -157,6 +164,20 @@ class GroundedRAGService {
       if (matched && !matchedSymbols.some((s) => s.id === sym.id)) {
         matchedSymbols.push(sym);
       }
+    }
+
+    if (isDbQuery) {
+      matchedSymbols.sort((a, b) => {
+        const aScore = (a.filePath.endsWith(".sql") ? 100 : 0) + (a.type === "table" ? 80 : 0) + (a.filePath.includes("models") ? 50 : 0) - (a.filePath.endsWith(".md") ? 100 : 0);
+        const bScore = (b.filePath.endsWith(".sql") ? 100 : 0) + (b.type === "table" ? 80 : 0) + (b.filePath.includes("models") ? 50 : 0) - (b.filePath.endsWith(".md") ? 100 : 0);
+        return bScore - aScore;
+      });
+    } else if (isApiQuery) {
+      matchedSymbols.sort((a, b) => {
+        const aScore = (a.type === "endpoint" ? 80 : 0) + (a.filePath.includes("routes") ? 50 : 0) - (a.filePath.endsWith(".md") ? 50 : 0);
+        const bScore = (b.type === "endpoint" ? 80 : 0) + (b.filePath.includes("routes") ? 50 : 0) - (b.filePath.endsWith(".md") ? 50 : 0);
+        return bScore - aScore;
+      });
     }
 
     // Rank matching files & code lines using most relevant keyword
@@ -366,8 +387,14 @@ Instructions:
       return `In '${repoName}', user interaction enters through \`src/components/LoginForm.tsx\` at line 26 (\`handleSubmit\`), which delegates authentication processing to core service \`src/services/auth.ts:18\` (\`loginUser\`). For a guided sequence, start with the Onboarding Overview tab or explore the 6-step learning path.`;
     }
 
-    if (qLower.includes("database") || qLower.includes("table") || qLower.includes("data access")) {
-      return `In '${repoName}', data access is mediated through \`${primary.file}\` (lines ${primary.lineRange || primary.startLine}). Sessions and credential records are managed via internal session stores with verification before persistence.`;
+    if (qLower.includes("database") || qLower.includes("table") || qLower.includes("data access") || qLower.includes("model") || qLower.includes("schema")) {
+      const dbFile = sources.find((s) => s.file.endsWith(".sql") || s.file.includes("db") || s.file.includes("model")) || primary;
+      const tables = symbols.filter((s) => s.type === "table" || s.name.startsWith("Table:"));
+      if (tables.length > 0) {
+        const tableList = tables.map((t) => `• \`${t.name.replace(/^Table:\s*/, "")}\` (${t.filePath}:${t.startLine})`).join("\n");
+        return `In '${repoName}', the database schema and models are defined in \`${dbFile.file}\`:\n\nIdentified database tables and models:\n${tableList}\n\nData access, queries, and persistence models are implemented in \`${dbFile.file}\`.`;
+      }
+      return `In '${repoName}', data access is mediated through \`${dbFile.file}\` (lines ${dbFile.lineRange || dbFile.startLine}). Database models and persistence schemas are structured for verified querying.`;
     }
 
     if (qLower.includes("api") || qLower.includes("route") || qLower.includes("endpoint") || qLower.includes("process this request")) {

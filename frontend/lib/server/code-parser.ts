@@ -256,7 +256,7 @@ function parseGenericSymbols(
       repositoryId,
       filePath,
       name: "package.json",
-      type: "table",
+      type: "service",
       startLine: 1,
       endLine: lines.length,
       scope: filePath,

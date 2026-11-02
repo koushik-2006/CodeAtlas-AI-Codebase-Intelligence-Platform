@@ -216,22 +216,11 @@ export function useGitHub() {
       setActionLoading(false);
       return;
     }
-    if (isFirebaseConfigured) {
-      try {
-        const res = await authService.loginWithGitHub();
-        if (res.success) {
-          await refreshStatus();
-        }
-      } catch (e) {
-        console.warn("GitHub login failed:", e);
-      } finally {
-        setActionLoading(false);
-      }
-      return;
-    }
-    const apiBase = (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/$/, "");
-    window.location.href = `${apiBase}/auth/github`;
-  }, [refreshStatus]);
+    const returnPath = typeof window !== "undefined"
+      ? `${window.location.pathname}?connected=github&openAddRepo=true`
+      : "/dashboard?connected=github&openAddRepo=true";
+    window.location.href = `/api/auth/github?mode=login&redirect=${encodeURIComponent(returnPath)}`;
+  }, []);
 
   const disconnectGitHub = useCallback(async (): Promise<boolean> => {
     setActionLoading(true);

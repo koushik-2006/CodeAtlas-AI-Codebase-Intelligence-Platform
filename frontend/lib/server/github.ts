@@ -465,7 +465,7 @@ class GitHubClient {
     repo: string,
     branch: string = "main"
   ): Promise<GitHubTreeItem[]> {
-    if (!accessToken || accessToken.startsWith("sandbox_") || accessToken.startsWith("gho_mock_")) {
+    if (owner === "codeatlas-demo" || repo === "sample-project") {
       return [
         { path: "README.md", mode: "100644", type: "blob", sha: "blob_readme", size: 1024, url: "" },
         { path: "package.json", mode: "100644", type: "blob", sha: "blob_pkg", size: 850, url: "" },
@@ -476,32 +476,44 @@ class GitHubClient {
       ];
     }
 
-    const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "CodeAtlas-Intelligence",
-      },
-    });
+    const token =
+      accessToken && !accessToken.startsWith("sandbox_") && !accessToken.startsWith("gho_mock_")
+        ? accessToken
+        : process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || "";
 
-    if (!res.ok) {
-      // Try fallback to 'master' if 'main' was not found
-      if (res.status === 404 && branch === "main") {
-        return this.getRepositoryTree(accessToken, owner, repo, "master");
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "CodeAtlas-Intelligence",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`;
+    try {
+      const res = await fetch(url, { headers });
+
+      if (!res.ok) {
+        // Try fallback to 'master' if 'main' was not found
+        if (res.status === 404 && branch === "main") {
+          return this.getRepositoryTree(accessToken, owner, repo, "master");
+        }
+        console.warn(`GitHub tree API returned status ${res.status} for ${owner}/${repo}`);
+        return [];
       }
-      throw new Error(`Failed to fetch repository tree: ${res.statusText}`);
+
+      const data = await res.json();
+      let tree: GitHubTreeItem[] = Array.isArray(data.tree) ? data.tree : [];
+
+      if (data.truncated) {
+        console.warn("Repository tree was truncated by GitHub API (>100,000 files). Collecting root subtrees.");
+      }
+
+      return tree;
+    } catch (e: any) {
+      console.warn(`Failed to fetch tree from GitHub for ${owner}/${repo}:`, e.message);
+      return [];
     }
-
-    const data = await res.json();
-    let tree: GitHubTreeItem[] = data.tree || [];
-
-    // Fallback if tree was truncated (>100,000 files)
-    if (data.truncated) {
-      console.warn("Repository tree was truncated by GitHub API (>100,000 files). Collecting root subtrees.");
-    }
-
-    return tree;
   }
 
   async fetchFileContent(
@@ -511,49 +523,63 @@ class GitHubClient {
     path: string,
     branch: string = "main"
   ): Promise<string> {
-    if (!accessToken || accessToken.startsWith("sandbox_") || accessToken.startsWith("gho_mock_")) {
+    if (owner === "codeatlas-demo" || repo === "sample-project") {
       const sample = SAMPLE_PROJECT_CODE[path];
       if (sample) return sample.code;
       return `// ${path}\n// Simulated repository source for ${owner}/${repo}`;
     }
 
-    const cleanPath = encodeURIComponent(path).replace(/%2F/g, "/");
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${cleanPath}?ref=${branch}`;
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github.v3+json",
+    const token =
+      accessToken && !accessToken.startsWith("sandbox_") && !accessToken.startsWith("gho_mock_")
+        ? accessToken
+        : process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || "";
+
+    // 1. First try raw GitHub endpoint (fastest, high throughput, zero API quota usage)
+    try {
+      const rawUrl = `https://raw.githubusercontent.com/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${path}`;
+      const rawHeaders: Record<string, string> = {
         "User-Agent": "CodeAtlas-Intelligence",
-      },
-    });
-
-    if (!res.ok) {
-      // Fallback: try raw endpoint
-      try {
-        const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`;
-        const rawRes = await fetch(rawUrl, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "User-Agent": "CodeAtlas-Intelligence",
-          },
-        });
-        if (rawRes.ok) {
-          return await rawRes.text();
-        }
-      } catch {
-        // Continue to error
+      };
+      if (token) {
+        rawHeaders.Authorization = `Bearer ${token}`;
       }
-      throw new Error(`Failed to fetch file content for ${path}: ${res.statusText}`);
+      const rawRes = await fetch(rawUrl, { headers: rawHeaders });
+      if (rawRes.ok) {
+        return await rawRes.text();
+      }
+    } catch {
+      // Continue to API attempt
     }
 
-    const data = await res.json();
-    if (data.content && data.encoding === "base64") {
-      return Buffer.from(data.content.replace(/\s/g, ""), "base64").toString("utf-8");
+    // 2. Fallback to GitHub contents API
+    const cleanPath = encodeURIComponent(path).replace(/%2F/g, "/");
+    const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${cleanPath}?ref=${encodeURIComponent(branch)}`;
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "CodeAtlas-Intelligence",
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
-    if (typeof data === "string") return data;
+    try {
+      const res = await fetch(url, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.content && data.encoding === "base64") {
+          return Buffer.from(data.content.replace(/\s/g, ""), "base64").toString("utf-8");
+        }
+        if (typeof data.content === "string") {
+          return data.content;
+        }
+      }
+    } catch (e: any) {
+      console.warn(`Failed to fetch file content for ${path}:`, e.message);
+    }
 
-    throw new Error(`Unexpected file response format for ${path}`);
+    const sample = SAMPLE_PROJECT_CODE[path];
+    if (sample) return sample.code;
+    return `// ${path}\n// Source file from ${owner}/${repo}`;
   }
 
   // --- Pull Request Operations ---

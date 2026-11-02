@@ -226,6 +226,26 @@ class ApiClient {
        lastError?.name === "AbortError");
 
     if (isNetworkError) {
+      if (typeof window !== "undefined" && url.includes("localhost:8000")) {
+        try {
+          const cleanEp = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+          const localUrl = `/api${cleanEp.startsWith("/api") ? cleanEp.substring(4) : cleanEp}`;
+          const fallbackRes = await fetch(localUrl, {
+            credentials: (fetchOptions as any).credentials || "include",
+            ...fetchOptions,
+            headers,
+          });
+          if (fallbackRes.ok) {
+            const fbBody = await fallbackRes.json();
+            return {
+              success: fbBody?.success !== false,
+              data: fbBody?.data !== undefined ? fbBody.data : fbBody,
+              message: fbBody?.message,
+              timestamp: fbBody?.timestamp || new Date().toISOString(),
+            };
+          }
+        } catch {}
+      }
       message = "Unable to connect to the server. Please try again.";
     }
 

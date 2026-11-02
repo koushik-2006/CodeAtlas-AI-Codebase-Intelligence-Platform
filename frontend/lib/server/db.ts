@@ -1452,7 +1452,9 @@ class DatabaseManager {
   // --- Repository Operations ---
   getRepositories(userId: string = "usr_default"): DbRepository[] {
     const data = this.load();
-    return data.repositories.filter((r) => r.userId === userId || r.userId === "usr_default");
+    return data.repositories.filter(
+      (r) => r.visibility === "public" || r.userId === userId || r.userId === "usr_default" || userId === "usr_default"
+    );
   }
 
   getRepository(id: string, userId?: string): DbRepository | null {
@@ -1460,7 +1462,12 @@ class DatabaseManager {
     const repo = data.repositories.find((r) => r.id === id);
     if (!repo) return null;
     if (userId) {
-      if (repo.userId === userId || repo.userId === "usr_default") {
+      if (
+        repo.visibility === "public" ||
+        repo.userId === userId ||
+        repo.userId === "usr_default" ||
+        userId === "usr_default"
+      ) {
         return repo;
       }
       return null;

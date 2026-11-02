@@ -113,30 +113,30 @@ class RepositoryIndexer {
     });
 
     const connectedAccount = db.getConnectedAccount(userId, "github");
-    const hasLiveGithub =
-      connectionType === "github" &&
-      connectedAccount &&
-      connectedAccount.accessToken &&
-      owner !== "sample-project" &&
-      owner !== "codeatlas-demo";
+    const token = connectedAccount?.accessToken || "";
+    const isKnownGitHub =
+      connectionType === "github" ||
+      (owner && repo && owner !== "sample-project" && owner !== "codeatlas-demo");
 
     let rawTreeItems: GitHubTreeItem[] = [];
     let commitSha = "local_head";
     let isLiveTree = false;
 
-    if (hasLiveGithub) {
+    if (isKnownGitHub) {
       try {
         // Fetch commit revision and tree concurrently
         const [commitInfo, tree] = await Promise.all([
-          github.getLatestCommit(connectedAccount.accessToken, owner, repo, branch),
-          github.getRepositoryTree(connectedAccount.accessToken, owner, repo, branch),
+          github.getLatestCommit(token, owner, repo, branch),
+          github.getRepositoryTree(token, owner, repo, branch),
         ]);
 
         if (commitInfo?.sha) {
           commitSha = commitInfo.sha;
         }
-        rawTreeItems = tree;
-        isLiveTree = true;
+        if (tree.length > 0) {
+          rawTreeItems = tree;
+          isLiveTree = true;
+        }
       } catch (err: any) {
         console.warn(`Could not fetch live GitHub tree, falling back to curated sources: ${err.message}`);
       }

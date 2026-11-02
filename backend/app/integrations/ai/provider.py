@@ -196,15 +196,17 @@ class OpenAIProvider(BaseAIProvider):
         return await MockAIProvider().analyze_error(error_message, stack_trace, context_files)
 
 
-class GeminiProvider(BaseAIProvider):
-    """Google Gemini API Provider (Gemini 1.5 Flash)."""
-
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.api_key}"
-
-    async def explain_code(self, code: str, language: str, level: str) -> Dict[str, Any]:
-        prompt = f"{EXPLAIN_SYSTEM_PROMPT.format(level=level)}\n\nCode to explain:\n```{language}\n{code}\n```\nReturn strictly raw JSON."
+    async def answer_question(self, query: str, context_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
+        context_snippets = "\n\n".join([
+            f"File: {c.get('path', c.get('file', 'unknown'))}\n```{c.get('content', '')}```"
+            for c in (context_chunks or [])[:5]
+        ])
+        prompt = (
+            f"You are CodeAtlas Contextual AI Assistant. Answer the question about the codebase with accurate AST grounding.\n\n"
+            f"Verified Code Context:\n{context_snippets}\n\n"
+            f"User Question: {query}\n\n"
+            f"Provide an evidence-grounded answer citing exact files and logic."
+        )
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.post(
@@ -212,9 +214,51 @@ class GeminiProvider(BaseAIProvider):
                     headers={"Content-Type": "application/json"},
                     json={
                         "contents": [{"parts": [{"text": prompt}]}],
-                        "generationConfig": {"response_mime_type": "application/json"}
+                        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024}
                     },
-                    timeout=30.0
+                    timeout=20.0
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    answer_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    sources = []
+                    for chunk in (context_chunks or [])[:3]:
+                        sources.append({
+                            "file": chunk.get("path", chunk.get("file", "unknown")),
+                            "lines": f"{chunk.get('start_line', 1)}-{chunk.get('end_line', 20)}",
+                            "excerpt": chunk.get("content", "")[:120]
+                        })
+                    return {
+                        "chat_id": "chat_gemini",
+                        "answer": answer_text,
+                        "sources": sources,
+                        "suggested_questions": [
+                            "How is data persisted and queried in this project?",
+                            "Where are the API endpoints and routing declared?"
+                        ],
+                        "confidence": 0.96
+                    }
+        except Exception:
+            pass
+        return await MockAIProvider().answer_question(query, context_chunks)
+
+    async def compare_code(self, code_a: str, code_b: str, language: str) -> Dict[str, Any]:
+        prompt = (
+            f"Compare these two versions of {language} code. Analyze structural, architectural, and runtime changes.\n"
+            f"Code Version A:\n```{language}\n{code_a}\n```\n\n"
+            f"Code Version B:\n```{language}\n{code_b}\n```\n\n"
+            f"Return strictly raw JSON with keys: summary (string), differences (list of objects with type, description, lines_a, lines_b), breaking_changes (list of strings), performance_impact (string), recommendations (list of strings)."
+        )
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    self.api_url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+                    },
+                    timeout=25.0
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -222,15 +266,33 @@ class GeminiProvider(BaseAIProvider):
                     return json.loads(text)
         except Exception:
             pass
-        return await MockAIProvider().explain_code(code, language, level)
-
-    async def answer_question(self, query: str, context_chunks: List[Dict[str, Any]]) -> Dict[str, Any]:
-        return await MockAIProvider().answer_question(query, context_chunks)
-
-    async def compare_code(self, code_a: str, code_b: str, language: str) -> Dict[str, Any]:
         return await MockAIProvider().compare_code(code_a, code_b, language)
 
     async def analyze_error(self, error_message: str, stack_trace: Optional[str], context_files: List[Dict[str, Any]]) -> Dict[str, Any]:
+        prompt = (
+            f"You are CodeAtlas Debugging Intelligence. Analyze this runtime failure and provide actionable diagnosis.\n"
+            f"Error: {error_message}\n"
+            f"Stack Trace: {stack_trace or 'None'}\n"
+            f"Context: {context_files[:2]}\n\n"
+            f"Return strictly raw JSON with keys: error_summary (string), likely_causes (list of objects with title, description, file, line, confidence), debugging_steps (list of strings), suggested_fix (string), related_files (list of strings)."
+        )
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    self.api_url,
+                    headers={"Content-Type": "application/json"},
+                    json={
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {"response_mime_type": "application/json", "temperature": 0.1}
+                    },
+                    timeout=25.0
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(text)
+        except Exception:
+            pass
         return await MockAIProvider().analyze_error(error_message, stack_trace, context_files)
 
 

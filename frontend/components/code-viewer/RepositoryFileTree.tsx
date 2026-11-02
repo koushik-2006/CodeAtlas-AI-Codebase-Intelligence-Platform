@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Search,
   CheckCircle2,
+  X,
 } from "lucide-react";
 
 export interface FileItem {
@@ -174,14 +175,46 @@ export function RepositoryFileTree({
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Search filenames..."
             aria-label="Search filenames"
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-color)] bg-[var(--bg-input)] text-[var(--text-primary)] focus:border-[var(--primary)] outline-none"
+            className="w-full pl-8 pr-8 py-1.5 rounded-lg text-xs font-medium border border-[var(--border-color)] bg-[var(--bg-input)] text-[var(--text-primary)] focus:border-[var(--primary)] outline-none"
           />
+          {filter && (
+            <button
+              type="button"
+              onClick={() => setFilter("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-[var(--border-color)]/50 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              aria-label="Clear filter"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* File Tree List */}
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5" role="tree">
-        {files.map((f) => renderItem(f, 0))}
+        {files.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-[var(--text-secondary)]">
+            <FolderOpen className="w-8 h-8 text-[var(--text-secondary)]/50 mb-2 animate-pulse" />
+            <p className="font-semibold text-[var(--text-primary)]">Discovering files...</p>
+            <p className="mt-1 text-[11px] opacity-75">Reading repository structure</p>
+          </div>
+        ) : files.filter(matchesFilter).length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-6 text-center text-xs text-[var(--text-secondary)]">
+            <Search className="w-6 h-6 text-[var(--text-secondary)]/50 mb-2" />
+            <p className="font-medium text-[var(--text-secondary)]">
+              No files matching &ldquo;<span className="text-[var(--primary)] font-bold">{filter}</span>&rdquo;
+            </p>
+            <button
+              type="button"
+              onClick={() => setFilter("")}
+              className="mt-3 px-3 py-1 bg-[var(--primary)] text-white text-xs rounded-lg hover:opacity-90 font-medium transition shadow-sm"
+            >
+              Clear Filter
+            </button>
+          </div>
+        ) : (
+          files.map((f) => renderItem(f, 0))
+        )}
       </div>
     </div>
   );

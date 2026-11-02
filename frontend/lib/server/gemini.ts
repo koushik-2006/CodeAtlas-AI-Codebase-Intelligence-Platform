@@ -1,8 +1,47 @@
+import fs from "fs";
+import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import { aiCircuitBreaker, withRetry } from "./resilience";
 import { aiMetrics } from "./telemetry/ai-metrics";
 import { tracer } from "./telemetry/tracer";
 import { logger, redactSecrets } from "./telemetry/logger";
+
+function loadEnvFallback(): void {
+  const currentKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || "").trim();
+  if (currentKey && !currentKey.includes("your_") && !currentKey.includes("placeholder")) {
+    return;
+  }
+  const possiblePaths = [
+    path.join(process.cwd(), ".env.local"),
+    path.join(process.cwd(), "frontend", ".env.local"),
+    path.join(process.cwd(), "..", "frontend", ".env.local"),
+    path.join(process.cwd(), "backend", ".env"),
+    path.join(process.cwd(), "..", "backend", ".env"),
+  ];
+
+  for (const envPath of possiblePaths) {
+    if (fs.existsSync(envPath)) {
+      try {
+        const content = fs.readFileSync(envPath, "utf8");
+        for (const line of content.split("\n")) {
+          const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
+          if (match) {
+            const k = match[1];
+            let v = (match[2] || "").trim();
+            if (v.startsWith('"') && v.endsWith('"')) v = v.slice(1, -1);
+            if (v.startsWith("'") && v.endsWith("'")) v = v.slice(1, -1);
+            if (k === "GEMINI_API_KEY" || k === "GOOGLE_AI_KEY") {
+              if (v && !v.includes("your_") && !v.includes("placeholder")) {
+                process.env[k] = v;
+                return;
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+  }
+}
 
 export interface GeminiCompletionOptions {
   prompt: string;
@@ -33,6 +72,7 @@ export class GeminiService {
   private modelName: string;
 
   constructor() {
+    loadEnvFallback();
     this.apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || "").trim();
     this.modelName = (process.env.GEMINI_MODEL || "gemini-1.5-flash").trim();
 
@@ -50,6 +90,7 @@ export class GeminiService {
    * Refreshes credentials from environment (useful when .env is reloaded or updated dynamically).
    */
   reloadConfiguration(): void {
+    loadEnvFallback();
     this.apiKey = (process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_KEY || "").trim();
     this.modelName = (process.env.GEMINI_MODEL || "gemini-1.5-flash").trim();
 
