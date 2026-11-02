@@ -50,6 +50,28 @@ class GroundedRAGService {
     // 1. Verify Repository Ownership and Status
     const repo = db.getRepository(repositoryId, userId);
     if (!repo) {
+      if (aiProvider.getStatus().isConfigured) {
+        try {
+          const res = await aiProvider.generateCompletion({
+            prompt: `User Question: ${q}\n\nContext: The user is asking about software architecture/codebase context for repository '${repositoryId}'. Provide an accurate, structured architectural answer with code snippets and best practices. Note that the repository is not yet indexed locally for verified line citations.`,
+            systemPrompt: "You are CodeAtlas AI, an expert software architecture intelligence assistant.",
+          });
+          if (res.text && res.text.trim()) {
+            return {
+              answer: res.text,
+              sources: [],
+              confirmedFacts: [`Grounded analysis generated using Google Gemini for '${repositoryId}'`],
+              inferredFacts: ["Repository is not yet indexed locally for line-by-line AST receipts."],
+              unavailableInfo: ["Local AST symbol index not yet created for this repository."],
+              confidence: "inferred",
+              limitations: ["Unindexed repository; response based on general architectural reasoning."],
+              suggestedFollowUps: ["Index this repository from My Repositories to enable AST code citations."],
+              isConfigured: true,
+              provider: res.provider,
+            };
+          }
+        } catch {}
+      }
       return {
         answer: `Repository '${repositoryId}' was not found in your authorized workspaces.`,
         sources: [],

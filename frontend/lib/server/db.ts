@@ -1459,12 +1459,16 @@ class DatabaseManager {
 
   getRepository(id: string, userId?: string): DbRepository | null {
     const data = this.load();
-    const target = id.toLowerCase();
+    const target = (id || "").toLowerCase().trim();
+    const cleanTarget = target.includes("/") ? target.split("/").pop()!.trim() : target;
     const repo = data.repositories.find(
       (r) =>
         r.id.toLowerCase() === target ||
+        r.id.toLowerCase() === cleanTarget ||
         r.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-") === target ||
-        r.name.toLowerCase() === target
+        r.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-") === cleanTarget ||
+        r.name.toLowerCase() === target ||
+        r.name.toLowerCase() === cleanTarget
     );
     if (!repo) return null;
     if (userId) {
