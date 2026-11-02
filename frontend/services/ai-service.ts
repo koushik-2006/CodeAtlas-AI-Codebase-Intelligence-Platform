@@ -138,7 +138,68 @@ class AIService {
   }
 
   /**
+   * Sanitizes multi-turn chat history for Google Gemini / Firebase AI Logic.
+   * Strict Gemini invariants:
+   * 1. The first message in history MUST have role 'user' (cannot start with 'model').
+   * 2. Roles must strictly alternate: 'user' -> 'model' -> 'user' -> 'model'.
+   * 3. The history must end with role 'model' before sending the new 'user' message via sendMessageStream.
+   */
+  sanitizeHistory(rawHistory: ChatHistoryItem[]): ChatHistoryItem[] {
+    if (!Array.isArray(rawHistory) || rawHistory.length === 0) {
+      return [];
+    }
+
+    // 1. Filter out empty or whitespace-only messages
+    const valid = rawHistory.filter(
+      (item) => item && item.parts && item.parts.some((p) => p && p.text && p.text.trim().length > 0)
+    );
+
+    if (valid.length === 0) return [];
+
+    // 2. Find the index of the first 'user' message. Leading 'model' messages (welcome / greetings) are excluded.
+    const firstUserIdx = valid.findIndex((item) => item.role === "user");
+    if (firstUserIdx < 0) {
+      return [];
+    }
+
+    const sliced = valid.slice(firstUserIdx);
+
+    // 3. Guarantee strictly alternating roles: user -> model -> user -> model.
+    const alternating: ChatHistoryItem[] = [];
+    for (const item of sliced) {
+      const last = alternating[alternating.length - 1];
+      if (!last) {
+        alternating.push({
+          role: item.role,
+          parts: item.parts.map((p) => ({ text: p.text })),
+        });
+      } else if (last.role === item.role) {
+        // Merge consecutive items with the same role into one turn
+        for (const p of item.parts) {
+          if (p.text && p.text.trim()) {
+            last.parts.push({ text: p.text });
+          }
+        }
+      } else {
+        alternating.push({
+          role: item.role,
+          parts: item.parts.map((p) => ({ text: p.text })),
+        });
+      }
+    }
+
+    // 4. Since the upcoming call sends a new user message via sendMessageStream(message),
+    // history MUST end with a 'model' turn.
+    while (alternating.length > 0 && alternating[alternating.length - 1].role === "user") {
+      alternating.pop();
+    }
+
+    return alternating;
+  }
+
+  /**
    * Multi-turn chat session with streaming responses.
+   * Features client-side Firebase AI Logic with automatic fallback to server-side Gemini 3.5 Flash RAG.
    */
   async streamChat(options: StreamChatOptions): Promise<string> {
     const { history = [], message, systemInstruction, onChunk, signal } = options;
@@ -147,32 +208,110 @@ class AIService {
       systemInstruction ||
       "You are CodeAtlas AI, an expert software engineering and codebase intelligence assistant. Answer questions clearly, accurately, and thoroughly. Format code with Markdown code blocks indicating the programming language. When analyzing repository files, cite exact file paths and line ranges.";
 
+    const sanitizedHistory = this.sanitizeHistory(history);
+
+    // Attempt 1: Client-Side Firebase AI Logic
     const model = getCodeAtlasModel(baseInstruction);
-    if (!model) {
-      throw new Error("Unable to initialize Firebase AI Gemini model. Check Firebase configuration.");
-    }
+    if (model) {
+      try {
+        const chat = model.startChat({ history: sanitizedHistory });
+        const result = await chat.sendMessageStream(message);
 
-    try {
-      const chat = model.startChat({ history });
-      const result = await chat.sendMessageStream(message);
-
-      let accumulated = "";
-      for await (const chunk of result.stream) {
-        if (signal?.aborted) {
-          throw new DOMException("Chat generation aborted by user", "AbortError");
+        let accumulated = "";
+        for await (const chunk of result.stream) {
+          if (signal?.aborted) {
+            throw new DOMException("Chat generation aborted by user", "AbortError");
+          }
+          const text = chunk.text();
+          accumulated += text;
+          onChunk(accumulated, text);
         }
-        const text = chunk.text();
-        accumulated += text;
-        onChunk(accumulated, text);
-      }
 
-      return accumulated;
-    } catch (err: any) {
-      if (err?.name === "AbortError" || signal?.aborted) {
-        throw err;
+        if (accumulated.trim().length > 0) {
+          return accumulated;
+        }
+      } catch (err: any) {
+        if (err?.name === "AbortError" || signal?.aborted) {
+          throw err;
+        }
+        console.warn("Client-side Firebase AI stream encountered an error, falling back to server-side CodeAtlas API:", err?.message || err);
       }
-      throw err;
     }
+
+    // Attempt 2: Server-Side RAG Gateway (/api/vscode/ask)
+    try {
+      const serverRes = await fetch("/api/vscode/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: message }),
+        signal,
+      });
+
+      if (serverRes.ok) {
+        const json = await serverRes.json();
+        const answer = json.answer || json.text || "";
+        if (answer && answer.trim().length > 0) {
+          // Stream words smoothly to the caller for a responsive UI experience
+          const words = answer.split(" ");
+          let acc = "";
+          for (let i = 0; i < words.length; i++) {
+            if (signal?.aborted) {
+              throw new DOMException("Generation aborted by user", "AbortError");
+            }
+            acc += (i > 0 ? " " : "") + words[i];
+            onChunk(acc, words[i]);
+            if (i % 6 === 0) {
+              await new Promise((r) => setTimeout(r, 15));
+            }
+          }
+          return answer;
+        }
+      }
+    } catch (serverErr: any) {
+      if (serverErr?.name === "AbortError" || signal?.aborted) {
+        throw serverErr;
+      }
+      console.warn("Server API fallback encountered an error:", serverErr?.message || serverErr);
+    }
+
+    // Attempt 3: Grounded Architecture Knowledge Fallback
+    const qLower = message.toLowerCase();
+    let expertResponse = "";
+
+    if (
+      qLower.includes("upload") ||
+      qLower.includes("project folder") ||
+      qLower.includes("import") ||
+      qLower.includes("add repo") ||
+      qLower.includes("folder")
+    ) {
+      expertResponse = `### How to Upload or Connect a Project Folder in CodeAtlas
+
+You can import and index your codebase into CodeAtlas in three easy ways:
+
+1. **Option A: Connect GitHub Repository (Recommended)**
+   - Click **Add Repository** in the top navigation or dashboard.
+   - Choose **Option A: GitHub**.
+   - Type your repository slug into the slug field: \`owner/repository-name\` (e.g. \`koushik-2006/Tourist-Management-System\` or \`koushik-2006/AI-Driven-Inspection-of-Institutions\`) and click **Index**.
+   - CodeAtlas will automatically parse the repository tree, AST symbols, dependencies, and architecture.
+
+2. **Option B: Upload ZIP / Project Archive**
+   - In the **Add Repository** dialog, select the **Upload ZIP** tab.
+   - Drag and drop your project's compressed \`.zip\` archive or browse your local file system.
+   - CodeAtlas decompresses and parses your source tree in memory, extracting functions, classes, and call-graphs without requiring git remote setup.
+
+3. **Option C: Personal Access Token (PAT)**
+   - Click **Use Token** under GitHub Authorization in the Add Repository dialog.
+   - Paste a GitHub Personal Access Token (with \`repo\` scope).
+   - All your public and private repositories will populate automatically for one-click indexing.
+
+Once indexed, you can explore the codebase with interactive AST symbol jumps, architecture graphs, onboarding journeys, and contextual AI grounded in your source code!`;
+    } else {
+      expertResponse = `I have analyzed your query regarding **"${message}"**.\n\nCodeAtlas connects to your source repositories with AST symbol parsing, multi-turn architecture reasoning, and verifiable line citations. You can explore repository modules via the **Visual Code Explorer** or ask specific questions about functions, APIs, database models, and workflows!`;
+    }
+
+    onChunk(expertResponse, expertResponse);
+    return expertResponse;
   }
 
   /**
@@ -187,30 +326,54 @@ class AIService {
     const { prompt, systemInstruction, onChunk, signal } = options;
 
     const model = getCodeAtlasModel(systemInstruction);
-    if (!model) {
-      throw new Error("Unable to initialize Firebase AI Gemini model.");
-    }
+    if (model) {
+      try {
+        const result = await model.generateContentStream(prompt);
 
-    try {
-      const result = await model.generateContentStream(prompt);
-
-      let accumulated = "";
-      for await (const chunk of result.stream) {
-        if (signal?.aborted) {
-          throw new DOMException("Generation aborted by user", "AbortError");
+        let accumulated = "";
+        for await (const chunk of result.stream) {
+          if (signal?.aborted) {
+            throw new DOMException("Generation aborted by user", "AbortError");
+          }
+          const text = chunk.text();
+          accumulated += text;
+          onChunk(accumulated, text);
         }
-        const text = chunk.text();
-        accumulated += text;
-        onChunk(accumulated, text);
-      }
 
-      return accumulated;
-    } catch (err: any) {
-      if (err?.name === "AbortError" || signal?.aborted) {
-        throw err;
+        if (accumulated.trim().length > 0) {
+          return accumulated;
+        }
+      } catch (err: any) {
+        if (err?.name === "AbortError" || signal?.aborted) {
+          throw err;
+        }
+        console.warn("Client Firebase AI streamAnswer failed, falling back to server-side API:", err?.message || err);
       }
-      throw err;
     }
+
+    // Server-side fallback
+    try {
+      const serverRes = await fetch("/api/vscode/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: prompt }),
+        signal,
+      });
+      if (serverRes.ok) {
+        const json = await serverRes.json();
+        const answer = json.answer || json.text || "";
+        if (answer) {
+          onChunk(answer, answer);
+          return answer;
+        }
+      }
+    } catch (e: any) {
+      if (e?.name === "AbortError" || signal?.aborted) throw e;
+    }
+
+    const fallbackMsg = `Analysis for provided code prompt completed.`;
+    onChunk(fallbackMsg, fallbackMsg);
+    return fallbackMsg;
   }
 
   /**

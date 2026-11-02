@@ -298,13 +298,15 @@ export function AssistantWorkspace() {
         "When explaining or referencing repository files, ALWAYS cite exact file paths and line ranges in the format `file/path.ext:start-end`.\n" +
         repoContext;
 
-      // 2. Format history for Gemini
-      const geminiHistory: ChatHistoryItem[] = currentConversation.messages
-        .filter((m) => !m.isError && m.text.trim())
-        .map((m) => ({
-          role: m.sender === "user" ? ("user" as const) : ("model" as const),
-          parts: [{ text: m.text }],
-        }));
+      // 2. Format history for Gemini (sanitizing out initial model greetings)
+      const validMessages = currentConversation.messages.filter((m) => !m.isError && m.text.trim());
+      const firstUserIndex = validMessages.findIndex((m) => m.sender === "user");
+      const eligibleMessages = firstUserIndex >= 0 ? validMessages.slice(firstUserIndex) : [];
+
+      const geminiHistory: ChatHistoryItem[] = eligibleMessages.map((m) => ({
+        role: m.sender === "user" ? ("user" as const) : ("model" as const),
+        parts: [{ text: m.text }],
+      }));
 
       // 3. Stream response
       let finalAccumulated = "";

@@ -20,7 +20,10 @@ export const isFirebaseConfigured: boolean = Boolean(
 );
 
 // Firebase AI Logic recommended flash model constant (Gemini Developer API backend)
-export const AI_MODEL = process.env.NEXT_PUBLIC_FIREBASE_AI_MODEL || "gemini-1.5-flash";
+export const AI_MODEL = (process.env.NEXT_PUBLIC_FIREBASE_AI_MODEL || "gemini-2.5-flash").replace(
+  "gemini-1.5-flash",
+  "gemini-2.5-flash"
+);
 
 let cachedApp: FirebaseApp | null = null;
 let cachedAuth: Auth | null = null;
