@@ -10,7 +10,6 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useAuth } from "@/hooks/useAuth";
 import { authService } from "@/services/auth-service";
 import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
-import { GitHubSignInButton } from "@/components/auth/GitHubSignInButton";
 import { OtpInput } from "@/components/auth/OtpInput";
 import {
   ArrowLeft,
@@ -54,8 +53,6 @@ function LoginFormContent() {
     user,
     logout,
     loginWithGoogle,
-    loginWithGitHub,
-    enterGitHubSandbox,
     loginWithCredentials,
     register,
     verifyOtp,
@@ -376,22 +373,6 @@ function LoginFormContent() {
     }
   };
 
-  const handleGitHubSignInClick = async () => {
-    clearMessages();
-    setIsSubmitting(true);
-
-    try {
-      // Connect directly using the configured GitHub OAuth App (CodeAtlas Local)
-      // This bypasses cross-domain popup cookies and uses http://localhost:3000/api/auth/github/callback
-      const target = redirectTarget || "/dashboard";
-      window.location.href = `/api/auth/github?mode=login&redirect=${encodeURIComponent(target)}`;
-    } catch (err: any) {
-      console.warn("GitHub sign in encountered an exception; activating GitHub Developer fallback:", err);
-      enterGitHubSandbox();
-      completeAuthSuccess();
-    }
-  };
-
   const handleDemoAccess = () => {
     enterDemoMode();
     completeAuthSuccess();
@@ -518,19 +499,12 @@ function LoginFormContent() {
                   onError={(err) => setErrorMessage(err)}
                 />
 
-                <GitHubSignInButton
-                  disabled={isSubmitting}
-                  isLoading={isSubmitting}
-                  onClick={handleGitHubSignInClick}
-                  redirectTarget={redirectTarget || "/dashboard"}
-                />
-
                 <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-[var(--text-secondary)]">
                   <span>Having OAuth setup issues?</span>
                   <button
                     type="button"
                     onClick={() => {
-                      enterGitHubSandbox();
+                      enterDemoMode();
                       completeAuthSuccess();
                     }}
                     className="font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
@@ -653,19 +627,12 @@ function LoginFormContent() {
                   onError={(err) => setErrorMessage(err)}
                 />
 
-                <GitHubSignInButton
-                  disabled={isSubmitting}
-                  isLoading={isSubmitting}
-                  onClick={handleGitHubSignInClick}
-                  redirectTarget={redirectTarget || "/dashboard"}
-                />
-
                 <div className="flex items-center justify-between px-2 pt-1 text-[11px] text-[var(--text-secondary)]">
                   <span>Having OAuth setup issues?</span>
                   <button
                     type="button"
                     onClick={() => {
-                      enterGitHubSandbox();
+                      enterDemoMode();
                       completeAuthSuccess();
                     }}
                     className="font-bold text-[var(--primary)] hover:underline flex items-center gap-1"
