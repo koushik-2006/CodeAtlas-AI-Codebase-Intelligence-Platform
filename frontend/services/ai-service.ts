@@ -343,7 +343,7 @@ You can import and index your codebase into CodeAtlas in three easy ways:
 
 2. **Option B: Upload ZIP / Project Archive**
    - In the **Add Repository** dialog, select the **Upload ZIP** tab.
-   - Drag and drop your project's compressed \`.zip\` archive or browse your local file system.
+   - Drag and drop your project's compressed \`.zip\` archive or browse your local file system (supports up to 1 GB archives).
    - CodeAtlas decompresses and parses your source tree in memory, extracting functions, classes, and call-graphs without requiring git remote setup.
 
 3. **Option C: Personal Access Token (PAT)**

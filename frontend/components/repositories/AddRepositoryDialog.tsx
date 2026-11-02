@@ -75,6 +75,8 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [personalToken, setPersonalToken] = useState("");
   const [tokenApplying, setTokenApplying] = useState(false);
+  const [uploadedZipFile, setUploadedZipFile] = useState<File | null>(null);
+  const zipInputRef = useRef<HTMLInputElement>(null);
 
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -234,6 +236,11 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
       return;
     }
 
+    if (activeTab === "zip" && uploadedZipFile && uploadedZipFile.size > 1024 * 1024 * 1024) {
+      setErrorMessage("Archive exceeds the maximum 1 GB limit.");
+      return;
+    }
+
     setIsLoading(true);
     try {
       const rawInput = (activeTab === "url" ? repoUrl : repoName).trim();
@@ -251,6 +258,8 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
         : rawInput;
       const cloneUrl = parsed.valid
         ? parsed.htmlUrl
+        : activeTab === "zip" && uploadedZipFile
+        ? `Local archive: ${uploadedZipFile.name} (${(uploadedZipFile.size / (1024 * 1024)).toFixed(1)} MB)`
         : (repoUrl.trim() || `https://github.com/${owner}/${name}`);
 
       await onAdd(
@@ -265,6 +274,7 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
       );
       setRepoName("");
       setRepoUrl("");
+      setUploadedZipFile(null);
       onClose();
     } catch (err: any) {
       setErrorMessage(err.message || "Failed to add repository.");
@@ -734,14 +744,80 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
         {/* Option C: Upload ZIP */}
         {activeTab === "zip" && (
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="border-2 border-dashed border-[var(--border-color)] rounded-2xl p-6 text-center hover:border-[var(--primary)] transition-colors">
-              <FileArchive className="w-8 h-8 mx-auto text-[var(--primary)] mb-2" />
-              <p className="text-xs font-bold text-[var(--text-primary)]">
-                Drag and drop project archive (.zip, .tar.gz)
-              </p>
-              <p className="text-[11px] text-[var(--text-secondary)] mt-1">
-                Server-side AST parsing. Max 50MB archive size.
-              </p>
+            <input
+              ref={zipInputRef}
+              type="file"
+              accept=".zip,.tar.gz,.tar,.gz,.tgz"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const MAX_ZIP_BYTES = 1024 * 1024 * 1024; // 1 GB
+                if (file.size > MAX_ZIP_BYTES) {
+                  setErrorMessage("File exceeds the maximum 1 GB limit. Please select a smaller archive.");
+                  return;
+                }
+                setErrorMessage("");
+                setUploadedZipFile(file);
+                if (!repoName.trim()) {
+                  const cleanName = file.name
+                    .replace(/\.(zip|tar\.gz|tar|gz|tgz)$/i, "")
+                    .replace(/[^a-zA-Z0-9_-]/g, "-")
+                    .toLowerCase();
+                  setRepoName(cleanName);
+                }
+              }}
+            />
+
+            <div
+              onClick={() => zipInputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = e.dataTransfer.files?.[0];
+                if (!file) return;
+                const MAX_ZIP_BYTES = 1024 * 1024 * 1024; // 1 GB
+                if (file.size > MAX_ZIP_BYTES) {
+                  setErrorMessage("File exceeds the maximum 1 GB limit. Please select a smaller archive.");
+                  return;
+                }
+                setErrorMessage("");
+                setUploadedZipFile(file);
+                if (!repoName.trim()) {
+                  const cleanName = file.name
+                    .replace(/\.(zip|tar\.gz|tar|gz|tgz)$/i, "")
+                    .replace(/[^a-zA-Z0-9_-]/g, "-")
+                    .toLowerCase();
+                  setRepoName(cleanName);
+                }
+              }}
+              className="border-2 border-dashed border-[var(--border-color)] rounded-2xl p-6 text-center hover:border-[var(--primary)] transition-colors cursor-pointer group"
+            >
+              <FileArchive className="w-8 h-8 mx-auto text-[var(--primary)] mb-2 group-hover:scale-110 transition-transform" />
+              {uploadedZipFile ? (
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-emerald-500 flex items-center justify-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{uploadedZipFile.name}</span>
+                  </p>
+                  <p className="text-[11px] text-[var(--text-secondary)]">
+                    {(uploadedZipFile.size / (1024 * 1024)).toFixed(1)} MB / 1 GB max &bull; Click to change archive
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs font-bold text-[var(--text-primary)]">
+                    Drag and drop project archive (.zip, .tar.gz) or click to browse
+                  </p>
+                  <p className="text-[11px] text-[var(--text-secondary)] mt-1">
+                    Server-side AST parsing. Max 1 GB archive size.
+                  </p>
+                </>
+              )}
             </div>
 
             <div>
