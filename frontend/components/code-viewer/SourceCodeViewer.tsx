@@ -195,34 +195,48 @@ export function SourceCodeViewer({
 
       {/* Code Display Area */}
       <div className="flex-1 flex overflow-auto font-mono text-xs leading-6 select-text">
-        <CodeLineNumbers
-          totalLines={lines.length}
-          highlightedLine={highlightedLine}
-          onLineClick={onLineClick}
-        />
+        {lines.length === 0 || (lines.length === 1 && !lines[0].trim()) ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-[var(--text-secondary)]">
+            <FileText className="w-8 h-8 opacity-40 mb-2" />
+            <p className="text-xs font-mono font-semibold text-[var(--text-primary)]">
+              This file is empty (0 bytes).
+            </p>
+            <p className="text-[11px] opacity-75 mt-1">
+              Select a source file (such as <span className="font-bold text-[var(--primary)] font-mono">app.py</span>) from the explorer tree on the left.
+            </p>
+          </div>
+        ) : (
+          <>
+            <CodeLineNumbers
+              totalLines={lines.length}
+              highlightedLine={highlightedLine}
+              onLineClick={onLineClick}
+            />
 
-        <div className="flex-1 py-3 px-4 min-w-[500px]">
-          {lines.map((line, idx) => {
-            const lineNum = idx + 1;
-            const highlighted = isLineHighlighted(lineNum);
-            return (
-              <div
-                key={lineNum}
-                id={`L${lineNum}`}
-                onClick={() => onLineClick?.(lineNum)}
-                className={`px-2 rounded transition-colors whitespace-pre cursor-pointer ${
-                  highlighted
-                    ? isDark
-                      ? "bg-[#29D3C2]/20 text-[#29D3C2] font-semibold border-l-2 border-[#29D3C2]"
-                      : "bg-[#6C4DFF]/15 text-[#4D2BD4] font-semibold border-l-2 border-[#6C4DFF]"
-                    : "text-[var(--text-primary)] hover:bg-[var(--border-color)]/20"
-                }`}
-              >
-                {formatSyntaxLine(line)}
-              </div>
-            );
-          })}
-        </div>
+            <div className="flex-1 py-3 px-4 min-w-[500px]">
+              {lines.map((line, idx) => {
+                const lineNum = idx + 1;
+                const highlighted = isLineHighlighted(lineNum);
+                return (
+                  <div
+                    key={lineNum}
+                    id={`L${lineNum}`}
+                    onClick={() => onLineClick?.(lineNum)}
+                    className={`px-2 rounded transition-colors whitespace-pre cursor-pointer ${
+                      highlighted
+                        ? isDark
+                          ? "bg-[#29D3C2]/20 text-[#29D3C2] font-semibold border-l-2 border-[#29D3C2]"
+                          : "bg-[#6C4DFF]/15 text-[#4D2BD4] font-semibold border-l-2 border-[#6C4DFF]"
+                        : "text-[var(--text-primary)] hover:bg-[var(--border-color)]/20"
+                    }`}
+                  >
+                    {formatSyntaxLine(line)}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Symbol Navigator Popover Modal */}

@@ -42,22 +42,93 @@ import {
 type MainViewTab = "code" | "report" | "onboarding" | "learning" | "workflow" | "health";
 
 function findPreferredFile(items: FileItem[]): string | null {
-  for (const item of items) {
-    if (item.type === "file" && item.name.toLowerCase().startsWith("readme")) {
-      return item.path;
-    }
-  }
-  function findFirst(list: FileItem[]): string | null {
+  const allFiles: FileItem[] = [];
+
+  function collect(list: FileItem[]) {
     for (const item of list) {
-      if (item.type === "file") return item.path;
-      if (item.children) {
-        const found = findFirst(item.children);
-        if (found) return found;
+      if (item.type === "file") {
+        allFiles.push(item);
+      }
+      if (item.children && item.children.length > 0) {
+        collect(item.children);
       }
     }
-    return null;
   }
-  return findFirst(items);
+  collect(items);
+
+  if (allFiles.length === 0) return null;
+
+  // 1. Check for non-empty README files
+  const readmes = allFiles.filter(
+    (f) =>
+      f.name.toLowerCase().startsWith("readme") &&
+      f.size !== "0 B" &&
+      f.size !== "0"
+  );
+  if (readmes.length > 0) {
+    readmes.sort((a, b) => a.path.split("/").length - b.path.split("/").length);
+    return readmes[0].path;
+  }
+
+  // 2. Check for canonical entry point files
+  const entryPointNames = [
+    "app.py",
+    "main.py",
+    "server.py",
+    "index.ts",
+    "index.tsx",
+    "index.js",
+    "index.jsx",
+    "app.tsx",
+    "app.jsx",
+    "main.ts",
+    "main.js",
+    "server.ts",
+    "server.js",
+    "main.go",
+    "main.rs",
+    "application.java",
+    "main.java",
+    "requirements.txt",
+    "package.json",
+  ];
+
+  for (const ep of entryPointNames) {
+    const match = allFiles.find(
+      (f) => f.name.toLowerCase() === ep && f.size !== "0 B" && f.size !== "0"
+    );
+    if (match) return match.path;
+  }
+
+  // 3. Check for any indexable source code files (skipping dummy/hidden/placeholder files)
+  const isDummyOrHidden = (f: FileItem) =>
+    f.name.startsWith(".") ||
+    f.name.toLowerCase() === ".gitkeep" ||
+    f.name.toLowerCase() === ".gitignore" ||
+    f.size === "0 B" ||
+    f.size === "0";
+
+  const sourceFiles = allFiles.filter(
+    (f) =>
+      !isDummyOrHidden(f) &&
+      /\.(py|ts|tsx|js|jsx|java|go|rs|sql|html|css|json|yaml|yml|md|txt)$/i.test(f.name)
+  );
+  if (sourceFiles.length > 0) {
+    sourceFiles.sort((a, b) => {
+      const aDepth = a.path.split("/").length;
+      const bDepth = b.path.split("/").length;
+      if (aDepth !== bDepth) return aDepth - bDepth;
+      return a.name.localeCompare(b.name);
+    });
+    return sourceFiles[0].path;
+  }
+
+  // 4. Any non-empty file
+  const nonZero = allFiles.find((f) => !isDummyOrHidden(f));
+  if (nonZero) return nonZero.path;
+
+  // 5. Ultimate fallback
+  return allFiles[0].path;
 }
 
 function RepositoryExplorerContent() {
@@ -202,7 +273,9 @@ function RepositoryExplorerContent() {
       if (
         !selectedFilePath ||
         !flatPaths.has(selectedFilePath) ||
-        (repoId !== "sample-project" && selectedFilePath === "src/components/LoginForm.tsx")
+        (repoId !== "sample-project" && selectedFilePath === "src/components/LoginForm.tsx") ||
+        selectedFilePath.endsWith(".gitkeep") ||
+        selectedFilePath.endsWith(".gitignore")
       ) {
         const pref = findPreferredFile(files);
         if (pref) {

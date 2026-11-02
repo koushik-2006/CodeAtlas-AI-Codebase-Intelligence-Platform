@@ -63,10 +63,16 @@ class SourceFileService {
         let name = repo?.name;
         let branch = repo?.branch || "main";
 
-        if (!owner && repositoryId === "tourist-management-system") {
-          owner = "koushik-2006";
-          name = "Tourist-Management-System";
-          branch = "main";
+        if (!owner) {
+          if (repositoryId === "tourist-management-system") {
+            owner = "koushik-2006";
+            name = "Tourist-Management-System";
+            branch = "main";
+          } else if (repositoryId === "ai-driven-inspection-of-institutions" || repositoryId.includes("inspection")) {
+            owner = "koushik-2006";
+            name = "AI-Driven-Inspection-of-Institutions";
+            branch = "main";
+          }
         }
 
         if (owner && name && owner !== "you" && owner !== "codeatlas-demo") {
