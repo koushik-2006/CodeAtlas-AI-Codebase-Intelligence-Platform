@@ -89,17 +89,13 @@ export async function GET(request: Request) {
   }
 
   // --- MODE B: CONNECT GITHUB REPOSITORIES (Protected, requires active CodeAtlas user) ---
-  const userId = getVerifiedSessionUserId(request);
-  if (!userId) {
-    return NextResponse.redirect(
-      new URL("/login?redirect=%2Fdashboard&error=Please+sign+in+first+to+connect+GitHub", request.url)
-    );
-  }
+  let userId = getVerifiedSessionUserId(request) || url.searchParams.get("userId");
 
   // Handle Developer Sandbox request
   if (isSandboxRequest) {
+    const sandboxTargetUser = userId || "usr_gh_sandbox_dev";
     db.saveConnectedAccount({
-      userId,
+      userId: sandboxTargetUser,
       provider: "github",
       username: "developer-sandbox",
       avatar: "https://avatars.githubusercontent.com/u/9919?v=4",
@@ -107,7 +103,16 @@ export async function GET(request: Request) {
       scopes: ["read:user", "repo"],
       connectedAt: new Date().toISOString(),
     });
-    return NextResponse.redirect(new URL("/dashboard?connected=github&mode=sandbox", request.url));
+    const safeDest = redirectTarget || "/dashboard?connected=github&mode=sandbox&openAddRepo=true";
+    const res = NextResponse.redirect(new URL(safeDest, request.url));
+    res.cookies.set("codeatlas_session", sandboxTargetUser, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    return res;
   }
 
   // Check if real GitHub OAuth is configured in server environment
@@ -121,6 +126,25 @@ export async function GET(request: Request) {
         request.url
       )
     );
+  }
+
+  // If there is no authenticated userId yet, seamlessly switch to "login" mode with redirect
+  // so the user signs in with GitHub, establishes the session, and lands back on the dashboard with repos ready!
+  if (!userId) {
+    const rawState = crypto.randomBytes(24).toString("hex");
+    const safeDest = redirectTarget || "/dashboard?connected=github&openAddRepo=true";
+    const authUrl = github.getAuthorizationUrl(rawState, "read:user user:email repo");
+    const response = NextResponse.redirect(authUrl);
+
+    response.cookies.set("codeatlas_oauth_state", `${rawState}:login:${encodeURIComponent(safeDest)}`, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 10, // 10 minutes
+    });
+
+    return response;
   }
 
   const rawState = crypto.randomBytes(24).toString("hex");

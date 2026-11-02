@@ -195,7 +195,7 @@ export async function GET(request: Request) {
       const safeDest =
         redirectTarget.startsWith("/") && !redirectTarget.startsWith("//")
           ? redirectTarget
-          : "/dashboard";
+          : "/dashboard?connected=github&openAddRepo=true";
       const response = NextResponse.redirect(new URL(safeDest, request.url));
 
       response.cookies.set("codeatlas_session", targetUserId, {
@@ -212,13 +212,19 @@ export async function GET(request: Request) {
     // =========================================================================
     // FLOW 2: CONNECT REPOSITORIES (Existing authenticated CodeAtlas user)
     // =========================================================================
-    const activeUserId = getVerifiedSessionUserId(request) || stateUserId;
-    if (!activeUserId) {
-      const response = NextResponse.redirect(
-        new URL("/login?redirect=%2Fdashboard&error=Session+expired+during+GitHub+authorization", request.url)
-      );
-      response.cookies.delete("codeatlas_oauth_state");
-      return response;
+    const activeUserId = getVerifiedSessionUserId(request) || stateUserId || `usr_gh_${stableProviderId}`;
+
+    let existingUser = db.getUser(activeUserId);
+    if (!existingUser) {
+      existingUser = {
+        id: activeUserId,
+        email: profile.email || `${profile.login}@users.noreply.github.com`,
+        name: profile.name || profile.login,
+        avatar: profile.avatar_url,
+        role: "Software Engineer",
+        createdAt: new Date().toISOString(),
+      };
+      db.upsertUser(existingUser);
     }
 
     // Persist connected account to server database for active user
@@ -237,8 +243,17 @@ export async function GET(request: Request) {
       connectedAt: new Date().toISOString(),
     });
 
-    // Clear state cookie and redirect to dashboard
-    const response = NextResponse.redirect(new URL("/dashboard?connected=github", request.url));
+    // Clear state cookie and redirect to dashboard with session established
+    const sessionExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const dest = redirectTarget || "/dashboard?connected=github&openAddRepo=true";
+    const response = NextResponse.redirect(new URL(dest, request.url));
+    response.cookies.set("codeatlas_session", activeUserId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: sessionExpiry,
+    });
     response.cookies.delete("codeatlas_oauth_state");
     return response;
   } catch (err: any) {

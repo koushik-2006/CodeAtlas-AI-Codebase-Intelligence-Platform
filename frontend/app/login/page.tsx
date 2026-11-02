@@ -381,21 +381,14 @@ function LoginFormContent() {
     setIsSubmitting(true);
 
     try {
-      const res = await loginWithGitHub();
-      if (res.success && res.user) {
-        completeAuthSuccess();
-        return;
-      }
-      // If Firebase popup was cancelled, closed, or hung, activate GitHub Developer session
-      console.warn("GitHub sign-in fallback activated:", res.error);
-      enterGitHubSandbox();
-      completeAuthSuccess();
+      // Connect directly using the configured GitHub OAuth App (CodeAtlas Local)
+      // This bypasses cross-domain popup cookies and uses http://localhost:3000/api/auth/github/callback
+      const target = redirectTarget || "/dashboard";
+      window.location.href = `/api/auth/github?mode=login&redirect=${encodeURIComponent(target)}`;
     } catch (err: any) {
       console.warn("GitHub sign in encountered an exception; activating GitHub Developer fallback:", err);
       enterGitHubSandbox();
       completeAuthSuccess();
-    } finally {
-      setIsSubmitting(false);
     }
   };
 

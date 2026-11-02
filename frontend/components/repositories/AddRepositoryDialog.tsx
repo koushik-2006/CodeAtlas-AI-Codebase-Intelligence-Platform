@@ -19,8 +19,10 @@ import {
   Star,
   GitBranch,
   RefreshCw,
+  KeyRound,
 } from "lucide-react";
 import { apiClient } from "@/services/api-client";
+import { parseGitHubUrl } from "@/lib/github-url-parser";
 
 interface AddRepositoryDialogProps {
   isOpen: boolean;
@@ -70,6 +72,9 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
   const [fetchingRepos, setFetchingRepos] = useState(false);
   const [repoSearch, setRepoSearch] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<"all" | "public" | "private">("all");
+  const [showTokenInput, setShowTokenInput] = useState(false);
+  const [personalToken, setPersonalToken] = useState("");
+  const [tokenApplying, setTokenApplying] = useState(false);
 
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -87,46 +92,131 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
+  const checkGitHub = async () => {
+    try {
+      setFetchingRepos(true);
+
+      // Check if user has an active token in sessionStorage/localStorage
+      const clientToken =
+        typeof window !== "undefined"
+          ? sessionStorage.getItem("codeatlas_github_token") ||
+            sessionStorage.getItem("github_access_token") ||
+            localStorage.getItem("codeatlas_github_token")
+          : null;
+
+      if (clientToken) {
+        try {
+          const directRes = await fetch("https://api.github.com/user/repos?sort=updated&per_page=100", {
+            headers: {
+              Authorization: `Bearer ${clientToken}`,
+              Accept: "application/vnd.github.v3+json",
+            },
+          });
+          if (directRes.ok) {
+            const list = await directRes.json();
+            if (Array.isArray(list)) {
+              const mapped: DiscoveredRepo[] = list.map((repo: any) => ({
+                id: String(repo.id),
+                name: repo.name,
+                fullName: repo.full_name,
+                owner: repo.owner?.login || "user",
+                description: repo.description || "No description provided.",
+                visibility: repo.private ? ("private" as const) : ("public" as const),
+                language: repo.language || "TypeScript",
+                defaultBranch: repo.default_branch || "main",
+                url: repo.html_url,
+                stars: repo.stargazers_count || 0,
+                updatedAt: repo.updated_at || new Date().toISOString(),
+                isAlreadyIndexed: false,
+              }));
+              setDiscoveredRepos(mapped);
+              setGithubConnected(true);
+              if (mapped[0]?.owner) setGithubUsername(mapped[0].owner);
+              setFetchingRepos(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn("Direct GitHub token check error:", e);
+        }
+      }
+
+      const statusRes = await apiClient.get<any>("/api/auth/github/status");
+      const statusJson = statusRes.data || {};
+      const isConnected = Boolean(statusRes.success && statusJson.connected);
+      if (statusRes.success && statusJson) {
+        setGithubConnected(statusJson.connected);
+        setGithubUsername(statusJson.username);
+        setIsConfigured(statusJson.isConfigured);
+        setIsSandbox(statusJson.isSandbox);
+      }
+
+      // Fetch discoverable repositories only when connected
+      if (isConnected) {
+        const reposRes = await apiClient.get<any>("/api/github/repos");
+        const reposJson = reposRes.data || {};
+        const repoList = Array.isArray(reposRes.data) ? reposRes.data : reposJson.data;
+        if (reposRes.success && Array.isArray(repoList)) {
+          setDiscoveredRepos(repoList);
+          if (reposJson.meta?.isSandbox) {
+            setIsSandbox(true);
+          }
+        }
+      } else {
+        setDiscoveredRepos([]);
+      }
+    } catch (err) {
+      console.warn("Failed to discover GitHub repositories:", err);
+    } finally {
+      setFetchingRepos(false);
+    }
+  };
+
   // Fetch GitHub discovery info when modal opens
   useEffect(() => {
     if (!isOpen) return;
-
-    const checkGitHub = async () => {
-      try {
-        setFetchingRepos(true);
-        const statusRes = await apiClient.get<any>("/api/auth/github/status");
-        const statusJson = statusRes.data || {};
-        const isConnected = Boolean(statusRes.success && statusJson.connected);
-        if (statusRes.success && statusJson) {
-          setGithubConnected(statusJson.connected);
-          setGithubUsername(statusJson.username);
-          setIsConfigured(statusJson.isConfigured);
-          setIsSandbox(statusJson.isSandbox);
-        }
-
-        // Fetch discoverable repositories only when connected
-        if (isConnected) {
-          const reposRes = await apiClient.get<any>("/api/github/repos");
-          const reposJson = reposRes.data || {};
-          const repoList = Array.isArray(reposRes.data) ? reposRes.data : reposJson.data;
-          if (reposRes.success && Array.isArray(repoList)) {
-            setDiscoveredRepos(repoList);
-            if (reposJson.meta?.isSandbox) {
-              setIsSandbox(true);
-            }
-          }
-        } else {
-          setDiscoveredRepos([]);
-        }
-      } catch (err) {
-        console.warn("Failed to discover GitHub repositories:", err);
-      } finally {
-        setFetchingRepos(false);
-      }
-    };
-
     checkGitHub();
   }, [isOpen]);
+
+  const handleConnectGitHub = () => {
+    const returnPath = typeof window !== "undefined"
+      ? `${window.location.pathname}?connected=github&openAddRepo=true`
+      : "/dashboard?connected=github&openAddRepo=true";
+    window.location.href = `/api/auth/github?mode=login&redirect=${encodeURIComponent(returnPath)}`;
+  };
+
+  const handleApplyPersonalToken = async () => {
+    if (!personalToken.trim()) return;
+    setTokenApplying(true);
+    setErrorMessage("");
+    try {
+      const trimmed = personalToken.trim();
+      const res = await fetch("https://api.github.com/user", {
+        headers: {
+          Authorization: `Bearer ${trimmed}`,
+          Accept: "application/vnd.github.v3+json",
+        },
+      });
+      if (!res.ok) {
+        throw new Error("Invalid GitHub token. Please verify token permissions (repo, read:user).");
+      }
+      const userData = await res.json();
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("codeatlas_github_token", trimmed);
+        sessionStorage.setItem("github_access_token", trimmed);
+        localStorage.setItem("codeatlas_github_token", trimmed);
+      }
+      setGithubUsername(userData.login);
+      setGithubConnected(true);
+      setShowTokenInput(false);
+      setPersonalToken("");
+      await checkGitHub();
+    } catch (err: any) {
+      setErrorMessage(err.message || "Failed to authenticate with GitHub token.");
+    } finally {
+      setTokenApplying(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -146,15 +236,32 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
 
     setIsLoading(true);
     try {
-      const parts = repoName.trim().split("/");
-      const owner = parts.length > 1 ? parts[0] : (githubUsername || "you");
-      const name = parts.length > 1 ? parts.slice(1).join("/") : parts[0];
+      const rawInput = (activeTab === "url" ? repoUrl : repoName).trim();
+      const parsed = parseGitHubUrl(rawInput);
+
+      const owner = parsed.valid
+        ? parsed.owner
+        : rawInput.includes("/")
+        ? rawInput.split("/")[0]
+        : (githubUsername || "you");
+      const name = parsed.valid
+        ? parsed.repo
+        : rawInput.includes("/")
+        ? rawInput.split("/").slice(1).join("/")
+        : rawInput;
+      const cloneUrl = parsed.valid
+        ? parsed.htmlUrl
+        : (repoUrl.trim() || `https://github.com/${owner}/${name}`);
 
       await onAdd(
         name,
-        repoUrl.trim() || `https://github.com/${owner}/${name}`,
+        cloneUrl,
         activeTab,
-        { owner, language: "TypeScript", visibility: "private" }
+        {
+          owner,
+          language: "auto",
+          visibility: "public",
+        }
       );
       setRepoName("");
       setRepoUrl("");
@@ -317,22 +424,94 @@ export function AddRepositoryDialog({ isOpen, onClose, onAdd }: AddRepositoryDia
               </div>
 
               {!githubConnected ? (
-                <a
-                  href={isConfigured ? "/api/auth/github" : "/api/auth/github?sandbox=true"}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    isDark
-                      ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
-                      : "bg-[#1E2022] text-white hover:bg-[#2e3135]"
-                  }`}
-                >
-                  {isConfigured ? "Connect GitHub" : "Connect Sandbox"}
-                </a>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleConnectGitHub}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                      isDark
+                        ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
+                        : "bg-[#1E2022] text-white hover:bg-[#2e3135]"
+                    }`}
+                  >
+                    Connect GitHub
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenInput(!showTokenInput)}
+                    className="px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border border-[var(--border-color)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--primary)] transition-all flex items-center gap-1"
+                    title="Paste GitHub Personal Access Token (classic or fine-grained)"
+                  >
+                    <KeyRound className="w-3 h-3" />
+                    <span>{showTokenInput ? "Cancel" : "Use Token"}</span>
+                  </button>
+                </div>
               ) : (
-                <span className="text-[11px] text-[var(--text-secondary)] font-medium">
-                  Read-only AST access
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-[var(--text-secondary)] font-medium">
+                    Read-only AST access
+                  </span>
+                  <button
+                    type="button"
+                    onClick={checkGitHub}
+                    disabled={fetchingRepos}
+                    className="p-1.5 rounded-lg hover:bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    title="Refresh repositories"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${fetchingRepos ? "animate-spin text-[var(--primary)]" : ""}`} />
+                  </button>
+                </div>
               )}
             </div>
+
+            {/* Direct Personal Access Token Input Form */}
+            {showTokenInput && !githubConnected && (
+              <div className="p-3.5 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-surface)] space-y-2 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-[var(--primary)]" />
+                    GitHub Personal Access Token (PAT)
+                  </label>
+                  <a
+                    href="https://github.com/settings/tokens/new?scopes=repo,read:user"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-[var(--primary)] hover:underline"
+                  >
+                    Generate on GitHub &rarr;
+                  </a>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder="ghp_... or github_pat_..."
+                    value={personalToken}
+                    onChange={(e) => setPersonalToken(e.target.value)}
+                    className={`flex-1 px-3 py-1.5 rounded-xl text-xs border outline-none font-mono ${
+                      isDark
+                        ? "bg-[#0D1117] border-[#30363D] text-[#E6EDF3] focus:border-[#29D3C2]"
+                        : "bg-white border-[#E5E5E0] text-[#1E2022] focus:border-[#6C4DFF]"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleApplyPersonalToken}
+                    disabled={tokenApplying || !personalToken.trim()}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all disabled:opacity-40 flex items-center gap-1.5 ${
+                      isDark
+                        ? "bg-[#29D3C2] text-[#070A12] hover:bg-[#22b8a8]"
+                        : "bg-[#1E2022] text-white hover:bg-[#2e3135]"
+                    }`}
+                  >
+                    {tokenApplying && <Loader2 className="w-3 h-3 animate-spin" />}
+                    Apply
+                  </button>
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)]">
+                  Kept in session storage for direct, rate-limit-free GitHub API queries.
+                </p>
+              </div>
+            )}
 
             {/* Discovered Repositories List */}
             <div>

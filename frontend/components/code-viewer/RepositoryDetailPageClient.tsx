@@ -20,6 +20,7 @@ import { WorkflowTraceData, AvailableWorkflowEntryPoint } from "@/types/workflow
 import { RepositoryLearningPath } from "@/types/learning-path";
 import { RepositoryHealthScore } from "@/types/health-insights";
 import { apiClient } from "@/services/api-client";
+import { repositoryService } from "@/services/repository-service";
 import {
   GitBranch,
   ArrowLeft,
@@ -119,11 +120,50 @@ function RepositoryExplorerContent() {
 
   // Load repository metadata
   useEffect(() => {
+    let isCancelled = false;
     apiClient.get<any>(`/repositories/${repoId}`).then((res) => {
-      if (res.success && res.data) {
+      if (!isCancelled && res.success && res.data) {
         setRepoMetadata(res.data);
+      } else if (!isCancelled) {
+        repositoryService.getRepositoryById(repoId).then((local) => {
+          if (!isCancelled && local) {
+            setRepoMetadata({
+              name: local.name,
+              owner: local.owner,
+              defaultBranch: local.branch || "main",
+              status: local.status,
+              progress: local.progress,
+              fileCount: (local as any).fileCount || 0,
+              symbolCount: local.symbolCount || 0,
+              lastAnalyzed: local.lastAnalyzed,
+              isIndexed: local.status === "ready",
+            });
+          }
+        });
+      }
+    }).catch(() => {
+      if (!isCancelled) {
+        repositoryService.getRepositoryById(repoId).then((local) => {
+          if (!isCancelled && local) {
+            setRepoMetadata({
+              name: local.name,
+              owner: local.owner,
+              defaultBranch: local.branch || "main",
+              status: local.status,
+              progress: local.progress,
+              fileCount: (local as any).fileCount || 0,
+              symbolCount: local.symbolCount || 0,
+              lastAnalyzed: local.lastAnalyzed,
+              isIndexed: local.status === "ready",
+            });
+          }
+        });
       }
     });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [repoId]);
 
   // Load tree files
@@ -160,11 +200,23 @@ function RepositoryExplorerContent() {
   const handleTriggerReindex = async () => {
     setIsReindexing(true);
     try {
-      await apiClient.post(`/repositories/${repoId}/index`);
+      await repositoryService.reanalyzeRepository(repoId);
       const files = await sourceFileService.getRepositoryFileTree(repoId);
       if (files && files.length > 0) setTreeFiles(files);
-      const meta = await apiClient.get<any>(`/repositories/${repoId}`);
-      if (meta.success && meta.data) setRepoMetadata(meta.data);
+      const local = await repositoryService.getRepositoryById(repoId);
+      if (local) {
+        setRepoMetadata({
+          name: local.name,
+          owner: local.owner,
+          defaultBranch: local.branch || "main",
+          status: local.status,
+          progress: local.progress,
+          fileCount: (local as any).fileCount || 0,
+          symbolCount: local.symbolCount || 0,
+          lastAnalyzed: local.lastAnalyzed,
+          isIndexed: local.status === "ready",
+        });
+      }
     } catch (e) {
       console.warn("Reindexing request error:", e);
     } finally {

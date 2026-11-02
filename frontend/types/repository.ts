@@ -9,14 +9,20 @@ export interface Repository {
   description: string;
   visibility: RepositoryVisibility;
   language: string;
+  languages?: Record<string, number>;
   lastAnalyzed: string;
   status: IndexingStatus;
   progress: number;
   symbolCount: number;
+  fileCount?: number;
+  lineCount?: number;
   connectionType: RepositoryConnection;
   stars?: number;
+  forks?: number;
   branch?: string;
   loc?: number;
+  pushedAt?: string;
+  license?: string;
 }
 
 export interface RepositoryFilterOptions {

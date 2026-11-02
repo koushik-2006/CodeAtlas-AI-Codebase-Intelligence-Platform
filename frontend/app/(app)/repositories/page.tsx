@@ -35,6 +35,10 @@ export default function RepositoriesPage() {
       if (lang) {
         setFilters((prev) => ({ ...prev, language: lang }));
       }
+      if (params.get("openAddRepo") === "true") {
+        setIsAddModalOpen(true);
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
     }
   }, [setFilters]);
 
@@ -89,10 +93,10 @@ export default function RepositoriesPage() {
   ) => {
     await addRepository({
       name,
-      owner: options?.owner || "you",
+      owner: options?.owner || "koushik-2006",
       description: url || "Imported code repository ready for symbol parsing.",
-      visibility: options?.visibility || "private",
-      language: options?.language || (method === "sample" && name.includes("python") ? "Python" : "TypeScript"),
+      visibility: options?.visibility || "public",
+      language: options?.language === "auto" ? "TypeScript" : (options?.language || "TypeScript"),
       symbolCount: 0,
       connectionType: method === "url" ? "git_url" : method === "zip" ? "zip" : method === "sample" ? "sample" : "github",
     });

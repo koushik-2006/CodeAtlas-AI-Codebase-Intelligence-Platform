@@ -1,6 +1,9 @@
 import { Repository, RepositoryFilterOptions } from "@/types/repository";
 import { SAMPLE_REPOSITORIES_DATA } from "@/lib/constants";
 import { apiClient } from "./api-client";
+import { parseGitHubUrl } from "@/lib/github-url-parser";
+import { repositoryIndexer } from "./repository-indexer";
+import { getStore, saveStore } from "@/lib/demo/store";
 
 function formatLastUpdated(dateString?: string): string {
   if (!dateString) return "Recently";
@@ -29,7 +32,8 @@ class RepositoryService {
       const matchesSearch =
         !filters.searchQuery ||
         repo.name.toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
-        repo.description.toLowerCase().includes(filters.searchQuery.toLowerCase());
+        (repo.description || "").toLowerCase().includes(filters.searchQuery.toLowerCase()) ||
+        repo.owner.toLowerCase().includes(filters.searchQuery.toLowerCase());
 
       const matchesLang =
         !filters.language ||
@@ -51,152 +55,267 @@ class RepositoryService {
   }
 
   async getRepositories(filters?: Partial<RepositoryFilterOptions>): Promise<Repository[]> {
-    // 1. If signed in with GitHub and token is in sessionStorage, fetch real repos
+    // 1. Central Store (localStorage persisted)
     if (typeof window !== "undefined") {
       try {
-        const ghToken =
-          sessionStorage.getItem("codeatlas_github_token") ||
-          sessionStorage.getItem("github_access_token");
+        const store = getStore();
+        if (!store.repositories || store.repositories.length === 0) {
+          store.repositories = [...SAMPLE_REPOSITORIES_DATA];
+          saveStore(store);
+        }
 
-        if (ghToken) {
-          const res = await fetch("https://api.github.com/user/repos?sort=updated&per_page=30", {
-            headers: {
-              Authorization: `Bearer ${ghToken}`,
-              Accept: "application/vnd.github.v3+json",
-            },
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (Array.isArray(data) && data.length > 0) {
-              const liveRepos: Repository[] = data.map((item: any) => ({
-                id: String(item.id),
-                name: item.name,
-                owner: item.owner?.login || "you",
-                description: item.description || "GitHub repository ready for code intelligence.",
-                visibility: item.private ? "private" : "public",
-                language: item.language || "TypeScript",
-                lastAnalyzed: formatLastUpdated(item.updated_at),
-                status: "ready" as const,
-                progress: 100,
-                symbolCount: Math.max(45, ((item.size || 100) % 500) + 75),
-                connectionType: "github" as const,
-                stars: item.stargazers_count ?? 0,
-                branch: item.default_branch || "main",
-              }));
-              return this.applyFilters(liveRepos, filters);
-            }
+        // Auto-repair any previously stuck 35% mock repositories
+        let hasRepairs = false;
+        for (const repo of store.repositories) {
+          if (
+            repo.status === "indexing" &&
+            repo.progress === 35 &&
+            (repo.owner === "you" || repo.owner === "koushik-2006")
+          ) {
+            // Re-trigger real indexing in background
+            const realOwner = repo.owner === "you" ? "koushik-2006" : repo.owner;
+            repo.owner = realOwner;
+            hasRepairs = true;
+            this.reanalyzeRepository(repo.id).catch(() => {});
           }
         }
-      } catch (ghErr) {
-        console.warn("Live GitHub repo fetch failed; falling back gracefully:", ghErr);
+        if (hasRepairs) {
+          saveStore(store);
+        }
+
+        return this.applyFilters(store.repositories, filters);
+      } catch (err) {
+        console.warn("Failed to read repositories from store:", err);
       }
     }
 
-    // 2. Try backend API if available
-    try {
-      const params = new URLSearchParams();
-      if (filters?.searchQuery) params.set("search", filters.searchQuery);
-      if (filters?.language && filters.language !== "all") params.set("language", filters.language);
-      if (filters?.visibility && filters.visibility !== "all") params.set("visibility", filters.visibility);
-      if (filters?.status && filters.status !== "all") params.set("status", filters.status);
-
-      const qs = params.toString();
-      const res = await apiClient.get<Repository[]>(`/repositories${qs ? `?${qs}` : ""}`);
-      if (res.success && Array.isArray(res.data)) {
-        return res.data;
-      }
-    } catch (err) {
-      console.warn("Using fallback repository data due to network error:", err);
-    }
-
-    // 3. Fallback to sample repositories
+    // 2. Fallback to sample repositories
     return this.applyFilters(this.fallbackRepos, filters);
   }
 
   async getRepositoryById(id: string): Promise<Repository | null> {
+    if (typeof window !== "undefined") {
+      try {
+        const store = getStore();
+        const found = store.repositories.find((r) => r.id === id);
+        if (found) return found;
+      } catch {}
+    }
+
     try {
       const res = await apiClient.get<Repository>(`/repositories/${id}`);
       if (res.success && res.data) {
         return res.data;
       }
-    } catch {
-      // Fallback
-    }
+    } catch {}
 
     const list = await this.getRepositories();
     return list.find((r) => r.id === id) || this.fallbackRepos.find((r) => r.id === id) || null;
   }
 
   async addRepository(newRepo: Omit<Repository, "id" | "lastAnalyzed" | "status" | "progress">): Promise<Repository> {
-    try {
-      const res = await apiClient.post<Repository>("/repositories", newRepo);
-      if (res.success && res.data) {
-        return res.data;
-      }
-    } catch (err) {
-      console.warn("Failed to create repository on server, creating locally:", err);
-    }
+    // Parse name or URL using robust parser
+    const parsedName = parseGitHubUrl(newRepo.name);
+    const parsedDesc = parseGitHubUrl(newRepo.description || "");
+    const parsed = parsedName.valid ? parsedName : parsedDesc;
+
+    const owner = parsed.valid
+      ? parsed.owner
+      : newRepo.owner && newRepo.owner !== "you"
+      ? newRepo.owner
+      : "koushik-2006";
+    const name = parsed.valid
+      ? parsed.repo
+      : newRepo.name.includes("/")
+      ? newRepo.name.split("/").slice(1).join("/")
+      : newRepo.name;
+    const repoId = name.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
+    const branch = parsed.branch || (newRepo as any).branch || "main";
+    const cloneUrl = parsed.valid ? parsed.htmlUrl : `https://github.com/${owner}/${name}`;
 
     const created: Repository = {
-      ...newRepo,
-      id: newRepo.name.toLowerCase().replace(/[^a-z0-9_-]/g, "-"),
+      id: repoId,
+      name,
+      owner,
+      description: newRepo.description || `GitHub repository https://github.com/${owner}/${name}`,
+      visibility: newRepo.visibility || "public",
+      language: newRepo.language && newRepo.language !== "auto" ? newRepo.language : "TypeScript",
       lastAnalyzed: "Just now",
       status: "indexing",
-      progress: 35,
+      progress: 5,
+      symbolCount: newRepo.symbolCount || 0,
+      connectionType: newRepo.connectionType || "github",
+      branch,
     };
-    this.fallbackRepos.unshift(created);
+
+    // Save to Central Store
+    if (typeof window !== "undefined") {
+      try {
+        const store = getStore();
+        const existingIdx = store.repositories.findIndex((r) => r.id === repoId);
+        if (existingIdx !== -1) {
+          store.repositories[existingIdx] = { ...store.repositories[existingIdx], ...created };
+        } else {
+          store.repositories.unshift(created);
+        }
+        saveStore(store);
+        window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+      } catch (e) {
+        console.warn("Failed to persist new repository to store:", e);
+      }
+    }
+
+    // Trigger REAL Indexing Pipeline in the background
+    repositoryIndexer
+      .indexRepository(owner, name, {
+        branch,
+        customRepoId: repoId,
+        onProgress: (stage, percent) => {
+          if (typeof window !== "undefined") {
+            try {
+              const store = getStore();
+              const target = store.repositories.find((r) => r.id === repoId);
+              if (target) {
+                target.progress = percent;
+                target.status = percent >= 100 ? "ready" : "indexing";
+                saveStore(store);
+                window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+              }
+            } catch {}
+          }
+        },
+      })
+      .then((indexed) => {
+        if (typeof window !== "undefined") {
+          try {
+            const store = getStore();
+            const idx = store.repositories.findIndex((r) => r.id === repoId);
+            if (idx !== -1) {
+              store.repositories[idx] = {
+                ...store.repositories[idx],
+                ...indexed,
+                status: "ready",
+                progress: 100,
+                lastAnalyzed: "Just now",
+              };
+              saveStore(store);
+              window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+            }
+          } catch {}
+        }
+      })
+      .catch((err) => {
+        console.warn(`Repository indexing failed for ${owner}/${name}:`, err);
+        if (typeof window !== "undefined") {
+          try {
+            const store = getStore();
+            const target = store.repositories.find((r) => r.id === repoId);
+            if (target) {
+              target.status = "error";
+              target.progress = 0;
+              target.description = `Indexing failed: ${err.message || "Network error"}`;
+              saveStore(store);
+              window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+            }
+          } catch {}
+        }
+      });
+
     return created;
   }
 
   async deleteRepository(id: string): Promise<boolean> {
-    try {
-      const res = await apiClient.delete<any>(`/repositories/${id}`);
-      if (res.success) {
-        this.fallbackRepos = this.fallbackRepos.filter((r) => r.id !== id);
+    if (typeof window !== "undefined") {
+      try {
+        const store = getStore();
+        store.repositories = store.repositories.filter((r) => r.id !== id);
+        if (store.repositoryTrees) delete store.repositoryTrees[id];
+        if (store.repositoryFiles) delete store.repositoryFiles[id];
+        if (store.repositoryDependencies) delete store.repositoryDependencies[id];
+        saveStore(store);
+        window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
         return true;
-      }
-    } catch {
-      // Fallback
+      } catch {}
     }
+
+    try {
+      await apiClient.delete<any>(`/repositories/${id}`);
+    } catch {}
+
     this.fallbackRepos = this.fallbackRepos.filter((r) => r.id !== id);
     return true;
   }
 
   async reanalyzeRepository(id: string): Promise<Repository | null> {
-    try {
-      const res = await apiClient.post<any>(`/repositories/${id}/index`, {});
-      if (res.success) {
-        const repo = await this.getRepositoryById(id);
-        return repo;
-      }
-    } catch {
-      // Fallback
+    let repo: Repository | null = null;
+
+    if (typeof window !== "undefined") {
+      try {
+        const store = getStore();
+        repo = store.repositories.find((r) => r.id === id) || null;
+        if (repo) {
+          repo.status = "indexing";
+          repo.progress = 10;
+          saveStore(store);
+          window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+        }
+      } catch {}
     }
 
-    const repo = this.fallbackRepos.find((r) => r.id === id);
+    if (!repo) {
+      repo = this.fallbackRepos.find((r) => r.id === id) || null;
+    }
+
     if (!repo) return null;
-    repo.status = "indexing";
-    repo.progress = 25;
-    return repo;
-  }
 
-  async getIndexingStatus(id: string): Promise<{
-    status: string;
-    progress: number;
-    currentStage?: string;
-    fileCount?: number;
-    symbolCount?: number;
-  } | null> {
-    try {
-      const res = await apiClient.get<any>(`/repositories/${id}/index`);
-      if (res.success && res.data) {
-        return res.data;
-      }
-    } catch {
-      // Fallback
-    }
-    return null;
+    const owner = repo.owner && repo.owner !== "you" ? repo.owner : "koushik-2006";
+    const name = repo.name;
+    const branch = repo.branch || "main";
+
+    // Run real indexer
+    repositoryIndexer
+      .indexRepository(owner, name, {
+        branch,
+        customRepoId: id,
+        onProgress: (stage, percent) => {
+          if (typeof window !== "undefined") {
+            try {
+              const store = getStore();
+              const target = store.repositories.find((r) => r.id === id);
+              if (target) {
+                target.progress = percent;
+                target.status = percent >= 100 ? "ready" : "indexing";
+                saveStore(store);
+                window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+              }
+            } catch {}
+          }
+        },
+      })
+      .then((indexed) => {
+        if (typeof window !== "undefined") {
+          try {
+            const store = getStore();
+            const idx = store.repositories.findIndex((r) => r.id === id);
+            if (idx !== -1) {
+              store.repositories[idx] = {
+                ...store.repositories[idx],
+                ...indexed,
+                status: "ready",
+                progress: 100,
+                lastAnalyzed: "Just now",
+              };
+              saveStore(store);
+              window.dispatchEvent(new CustomEvent("codeatlas:repositories-changed"));
+            }
+          } catch {}
+        }
+      })
+      .catch((err) => {
+        console.warn("Reanalysis error:", err);
+      });
+
+    return repo;
   }
 }
 

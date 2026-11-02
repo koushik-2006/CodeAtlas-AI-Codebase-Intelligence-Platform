@@ -28,6 +28,11 @@ export default function DashboardPage() {
       const connected = params.get("connected");
       const error = params.get("error");
       const mode = params.get("mode");
+      const openAddRepo = params.get("openAddRepo");
+
+      if (openAddRepo === "true") {
+        setIsAddRepoOpen(true);
+      }
 
       if (connected === "github") {
         setOauthNotice({
@@ -56,17 +61,17 @@ export default function DashboardPage() {
   ) => {
     await addRepository({
       name,
-      owner: options?.owner || "you",
+      owner: options?.owner || "koushik-2006",
       description: url || "Connected repository AST symbol analysis in progress.",
-      visibility: options?.visibility || "private",
-      language: options?.language || (method === "sample" && name.includes("python") ? "Python" : "TypeScript"),
-      symbolCount: 18,
+      visibility: options?.visibility || "public",
+      language: options?.language === "auto" ? "TypeScript" : (options?.language || "TypeScript"),
+      symbolCount: 0,
       connectionType: method === "url" ? "git_url" : method === "zip" ? "zip" : "github",
     });
 
     setOauthNotice({
       type: "success",
-      text: `Repository "${name}" queued for indexing! Redirecting to repositories view.`,
+      text: `Repository "${name}" queued for real indexing! Redirecting to repositories view.`,
     });
 
     // Navigate to /repositories after adding repository
